@@ -4,6 +4,16 @@
 
 Plugin versions use `vMAJOR.MINOR.PATCH` Git tags. The example workflow's `v1.0` is a template revision; per-shot take numbers are project data, not plugin releases.
 
+## 未发布 / Unreleased
+
+- 中英文 README 补齐样例工作流扩展节点、模型与 LoRA 的目录和来源，以及可选 ASR、Skill 安装位置和按需安装说明。
+- 为原创插件代码与文档准备 MIT 许可证，并明确第三方扩展、模型、LoRA 与用户素材不因此获得 MIT 授权。
+- 使用教程与跨版本导入兼容性仍待验证；本节不对应 Git 标签，也不表示仓库已经公开。
+
+- Completed dependency, model, LoRA, optional ASR, and Skill-installation guidance in both READMEs.
+- Prepared MIT licensing for original plugin code and documentation, with third-party licensing boundaries stated explicitly.
+- Tutorial and cross-version import checks remain pending; this section is untagged and does not indicate public release.
+
 ## v0.1.0 · 2026-10-24 · 私有预览 / Private preview
 
 - 单节点 MV 工作台：项目设定、24 fps 分镜时间轴、提示词、镜头生成和最终验收。

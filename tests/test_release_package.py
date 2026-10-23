@@ -42,6 +42,34 @@ class ReleasePackageTests(unittest.TestCase):
                 self.assertTrue(path.is_file())
                 self.assertEqual(path.read_bytes()[:8], b"\x89PNG\r\n\x1a\n")
 
+    def test_public_readmes_document_example_dependencies_and_license(self):
+        license_text = (ROOT / "LICENSE").read_text("utf-8")
+        self.assertIn("MIT License", license_text)
+        self.assertIn("Permission is hereby granted, free of charge", license_text)
+        workflow = ROOT / "workflows" / "MiniMaxH3_MV_Planner_xiaoyue_MV工作台v1.0.json"
+        self.assertTrue(workflow.is_file())
+        for readme in ("README.md", "README_EN.md"):
+            with self.subTest(readme=readme):
+                body = (ROOT / readme).read_text("utf-8")
+                for required in (
+                    "LICENSE",
+                    "https://github.com/tl2012tl/comfyUI-llama-TE",
+                    "https://github.com/T8mars/comfyui-minimax-h3-audio-T8",
+                    "https://github.com/swan7-py/ComfyUI_Swan_Bits",
+                    "https://github.com/kijai/ComfyUI-KJNodes",
+                    "https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite",
+                    "https://github.com/yolain/ComfyUI-Easy-Use",
+                    "https://github.com/Suzie1/ComfyUI_Comfyroll_CustomNodes",
+                    "https://github.com/zhangp365/ComfyUI-utils-nodes",
+                    "https://github.com/M1kep/ComfyLiterals",
+                    "https://github.com/Windecay/ComfyUI-ReservedVRAM",
+                    "minimax_h3_hybrid_fl2va_ref2va_b25-49-int8.safetensors",
+                    "minimax_h3_video_vae_int8_convrot.safetensors",
+                    "Qwen3.8-27B-UD-IQ3_XXS.gguf",
+                    "whisper_large_v3_fp16.safetensors",
+                ):
+                    self.assertIn(required, body)
+
     def test_public_runtime_has_no_private_asr_endpoint_or_config_hook(self):
         for relative_path in (
             "nodes.py", "asr_provider.py", "server_api.py",

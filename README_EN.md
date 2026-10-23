@@ -2,7 +2,9 @@
 
 [简体中文](README.md) · [Changelog](CHANGELOG.md) · [Acknowledgements](ACKNOWLEDGEMENTS.md)
 
-A ComfyUI workbench for music-video projects. One main node manages project assets, the original soundtrack, lyrics, a 24 fps shot timeline, two-stage AI prompting, per-shot generation versions, and final review. The workbench organizes each shot's inputs and exposes them through **visible ports**; the downstream video-generation workflow remains yours to configure. This repository contains the plugin, two bundled Skills, and one editable MiniMax H3 example workflow. It does not contain models, songs, or generated footage.
+Making one shot is only part of making a music video. Keeping the lyrics, beat, assets, prompts, continuation chains, and many generated takes aligned is the harder part. **MiniMax H3 MV Workbench · xiaoyue** brings that production plan into ComfyUI: one main node manages the original soundtrack, lyrics, assets, a 24 fps shot timeline, two-stage AI prompting, take history, and final review.
+
+The workbench **plans, organizes, and drives** each shot through visible output ports. You still choose and wire the downstream model, sampler, LoRAs, upscaler, and save node. This repository contains the plugin, two bundled Skills, and one editable MiniMax H3 example workflow; it contains **no models, songs, or generated footage**.
 
 Current plugin version: **v0.1.0 private preview**. The `v1.0` in the example workflow filename is that template's revision, not the plugin version.
 
@@ -26,13 +28,73 @@ These are screenshots from an actual project; the music and visual assets shown 
 - **MV workbench** plans shots around the soundtrack and lets you adjust hard cuts, continuations, and dissolves on a 24 fps absolute-frame timeline. Correct lyrics, bind per-shot assets, generate the overall visual outline and individual H3 prompts, then generate selected shots in order. Each successful take keeps its own frame points, seed, and continuation-parent relationship.
 - **Final review desk** selects a take for each shot and previews the assembled MV using the original soundtrack; individual generated clips are muted. Export either a caption-free movie plus SRT or an FCP7 XML package with full source clips, relative media paths, and edit markers. The XML targets Premiere's FCP7 XML importer. Jianying/CapCut compatibility depends on its version and import path; the XML is not a native Jianying draft.
 
-## Install
+## From soundtrack to deliverable
+
+1. **Set up the project:** import the original song, lyrics/subtitles, and character or scene assets; choose aspect ratio and pass sizes.
+2. **Plan the shots:** place cuts and connections on an absolute-frame, 24 fps timeline. The overall outline and per-shot prompts use the same plan.
+3. **Generate and select:** run shots through your own graph. Successful takes retain their seed, original frame points, and continuation-parent take; failures do not masquerade as usable versions.
+4. **Review and deliver:** select takes on a multitrack timeline, preview them with the original song and subtitles, then export a caption-free movie plus SRT or an FCP7 XML package with full source clips and edit markers.
+
+## Installation and dependencies
 
 1. Clone this repository into `ComfyUI/custom_nodes/MiniMaxH3_MV_Planner_xiaoyue`. Cloning the private repository requires GitHub authentication.
-2. Open the [single published example workflow](workflows/MiniMaxH3_MV_Planner_xiaoyue_MV工作台v1.0.json) and consult its “发布依赖｜扩展节点与模型目录” note for required custom nodes, model filenames, and download URLs. The planner and the sample H3 generation graph are separate layers: planning alone does not require every model used by the sample graph.
+2. Install the parts you intend to run using the [custom-node](#custom-nodes-used-by-the-example-workflow), [model](#models-selected-in-the-example-workflow), and [LoRA](#loras-selected-in-the-example-workflow) lists below. The planner and the sample H3 generation graph are separate layers: planning alone does not require every model used by the sample graph.
 3. Restart ComfyUI and load the workflow. In the main node, select **① New/open project**, import the original track and save. Run the workflow once to register the current project's planning UI, then use **② MV workbench → ③ Final review desk**.
 
-The example generation graph uses extensions including [QwenTE](https://github.com/tl2012tl/comfyUI-llama-TE), [T8 H3 Audio](https://github.com/T8mars/comfyui-minimax-h3-audio-T8), and [Swan Bits](https://github.com/swan7-py/ComfyUI_Swan_Bits). The complete list and model links are in the workflow note. Optional local ASR uses [Easy Media](https://github.com/yolain/ComfyUI-Easy-Media) and Whisper. If you already have timestamped lyrics, import them directly; neither ASR nor a source-separation model is required.
+Install only what you need: **project planning** does not require the H3 generation models; **AI outline/prompt generation** needs a working QwenTE inference chain and its models; **running the example video graph** additionally needs the video extensions, H3 models, and LoRAs actually enabled in that graph; **automatic subtitle recognition** alone needs optional local ASR.
+
+### Custom nodes used by the example workflow
+
+This list matches the **single published example workflow**. It is not a universal requirement for every planner feature. Install extensions under `ComfyUI/custom_nodes/`, follow each repository's instructions for Python dependencies, and restart ComfyUI. The MV workbench nodes themselves come from this plugin.
+
+| Extension | Role in the example | Installation |
+| --- | --- | --- |
+| QwenTE | Multimodal prompt inference | [comfyUI-llama-TE](https://github.com/tl2012tl/comfyUI-llama-TE) |
+| T8 H3 Audio | Semantic bridge / audio-related nodes | [comfyui-minimax-h3-audio-T8](https://github.com/T8mars/comfyui-minimax-h3-audio-T8) |
+| Swan Bits | Audio driving / latent upscaling | [ComfyUI_Swan_Bits](https://github.com/swan7-py/ComfyUI_Swan_Bits) |
+| KJNodes | H3 memory optimization / preview | [ComfyUI-KJNodes](https://github.com/kijai/ComfyUI-KJNodes) |
+| VideoHelperSuite | Video loading | [ComfyUI-VideoHelperSuite](https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite) |
+| Easy-Use | Index switching / cache clearing | [ComfyUI-Easy-Use](https://github.com/yolain/ComfyUI-Easy-Use) |
+| Comfyroll | Prompt text | [ComfyUI_Comfyroll_CustomNodes](https://github.com/Suzie1/ComfyUI_Comfyroll_CustomNodes) |
+| utils-nodes | Text concatenation | [ComfyUI-utils-nodes](https://github.com/zhangp365/ComfyUI-utils-nodes) |
+| ComfyLiterals | Float node | [ComfyLiterals](https://github.com/M1kep/ComfyLiterals) |
+| ReservedVRAM | VRAM reservation | [ComfyUI-ReservedVRAM](https://github.com/Windecay/ComfyUI-ReservedVRAM) |
+
+The example treats `UNETLoader`, `VAELoader`, `CLIPLoader`, `MiniMaxH3ReferenceToVideo`, samplers, and `SaveVideo` as nodes supplied by the current ComfyUI. If yours lacks them, check your ComfyUI version first.
+
+### Models selected in the example workflow
+
+All paths below are relative to `ComfyUI/models/`, and the **filenames match the published example workflow**. Place downloads at the listed paths. Reuse matching models you already have; model weights are not included in this repository.
+
+| Purpose | Destination relative to `ComfyUI/models/` | Download |
+| --- | --- | --- |
+| H3 Hybrid diffusion model | `diffusion_models/minimaxh/minimax_h3_hybrid_fl2va_ref2va_b25-49-int8.safetensors` | [Hugging Face](https://huggingface.co/smhfacct/Minimax-H3-fl2va-ref2va-hybrid-models/resolve/main/minimax_h3_hybrid_fl2va_ref2va_b25-49-int8.safetensors) |
+| Qwen3-VL text encoder | `text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors` | [Hugging Face](https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors) |
+| H3 audio VAE | `vae/minimax_h3_audio_vae_fp32.safetensors` | [Hugging Face](https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/vae/minimax_h3_audio_vae_fp32.safetensors) |
+| H3 video VAE (int8) | `vae/minimax_h3_video_vae_int8_convrot.safetensors` | [Hugging Face](https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/vae/minimax_h3_video_vae_int8_convrot.safetensors) |
+| T8 semantic bridge | `semantic_bridge/t8_compat/BUNNY_H3_ActionLogic_Bridge_V1_T8_Compat.safetensors` | [Hugging Face](https://huggingface.co/t8star/Semantic-Bridge-Comfy/resolve/main/models/semantic_bridge/t8_compat/BUNNY_H3_ActionLogic_Bridge_V1_T8_Compat.safetensors) |
+| H3 latent upscaler | `latent_upscale_models/h3_upscaler_lms_v0.1.safetensors` | [Hugging Face](https://huggingface.co/Alissonerdx/Minimax-H3-ComfyUI/resolve/main/latent_upscaler/h3_upscaler_lms_v0.1.safetensors) |
+| QwenTE main model | `LLM/Q38-27B-G-UD/Qwen3.8-27B-UD-IQ3_XXS.gguf` | [Hugging Face](https://huggingface.co/unsloth/Qwen3.8-27B-GGUF/resolve/main/Qwen3.8-27B-UD-IQ3_XXS.gguf) |
+| QwenTE multimodal projector | `LLM/Q38-27B-G-UD/mmproj-Qwen3.8-27B-BF16.gguf` | [Hugging Face](https://huggingface.co/unsloth/Qwen3.8-27B-GGUF/resolve/main/mmproj-BF16.gguf); downloaded as `mmproj-BF16.gguf`, so rename it to match the destination |
+
+### LoRAs selected in the example workflow
+
+Place these under `ComfyUI/models/loras/minimaxh3/`. These are filenames selected in the example; exact sources have not all been verified, so no potentially misleading alternative links are supplied. If you use your own LoRAs, update the relevant nodes in the workflow.
+
+- `GunFu.safetensors`
+- `H3_Combat_V2.safetensors`
+- `H3_speed_slider_1.1.safetensors`
+- `Minimax H3真实电影质感V0.1.safetensors`
+- `minimax_h3_fl2v_turbo_4step_v1.2_768p_comfyui_bf16.safetensors`
+- `minimax_h3_lms_v1.0_r64_r2.safetensors`
+- `minimax_h3_taomate_3step_lora_avg_rank_19_bf16.safetensors`
+- `minimax_h3_turbo_4step_10ErosMax_test4_pruned_curveproj1025_exp_v001-T8.safetensors`
+- `minimax_h3_turbo_v4_step600_ema_DasiwaREF2VAHybridV1_0_curveproj1025_compat_v001.safetensors`
+- `Motion_Repair.safetensors`
+
+### Optional local ASR / Whisper
+
+For audio-to-subtitle recognition, install [Easy Media](https://github.com/yolain/ComfyUI-Easy-Media) and `openai-whisper` in the Python environment used by ComfyUI. Place [whisper_large_v3_fp16.safetensors](https://huggingface.co/Comfy-Org/HuMo_ComfyUI/resolve/main/split_files/audio_encoders/whisper_large_v3_fp16.safetensors) in `ComfyUI/models/audio_encoders/`. If you already have timestamped lyrics, import them directly; **ASR is optional**. The workbench does not separate vocals; prepare stems in another workflow if needed. The author's private LAN ASR provider is not in the published workflow.
 
 ## Connect your own generation workflow
 
@@ -54,4 +116,6 @@ Both bundled and user-added Skills are read **only from this plugin's `skills/` 
 - The editor currently uses a **24 fps** timeline. The example H3 graph uses `17N+5` generation windows. Other video models can be connected through visible ports, but the sample graph is not a universal adapter.
 - Plugin releases use `vMAJOR.MINOR.PATCH` Git tags and the [changelog](CHANGELOG.md). A project's *shot versions* are separate generation records, not Git versions. `v0.1.0` is the first private preview; dependencies, import compatibility, and documentation will continue to be checked before public release.
 
-Thanks to the ComfyUI community members who inspired and enabled this work; see [Acknowledgements](ACKNOWLEDGEMENTS.md).
+## License and third-party content
+
+Original plugin code and documentation in this project are under the [MIT License](LICENSE). You may use, modify, and redistribute them while retaining the copyright and license notice. The example workflow builds on community-shared techniques and calls independently distributed extensions and models. **MIT does not replace the respective licenses of those upstream projects, model weights, LoRAs, or user-supplied media.** Check the source terms before downloading, using, or redistributing third-party content. See [Acknowledgements](ACKNOWLEDGEMENTS.md) for community credits.
