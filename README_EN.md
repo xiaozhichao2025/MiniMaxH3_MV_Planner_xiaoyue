@@ -12,6 +12,10 @@ The workbench **plans, organizes, and drives** each shot through visible output 
 
 Current plugin version: **v0.1.0 private preview**. The `v1.0` in the example workflow filename is that template's revision, not the plugin version.
 
+## Where to find the example workflow
+
+The repository contains **one editable example workflow**: [MiniMax H3 MV Workbench JSON](workflows/MiniMaxH3_MV_Planner_xiaoyue_MV工作台v1.0.json). After installation, it is at `ComfyUI/custom_nodes/MiniMaxH3_MV_Planner_xiaoyue/workflows/MiniMaxH3_MV_Planner_xiaoyue_MV工作台v1.0.json`. Drag the JSON onto the ComfyUI canvas or open it with “Load Workflow.” If ComfyUI reports missing nodes, install them from the dependency list below and restart. The workbench plans and drives the project; the downstream H3 graph is a replaceable wiring example.
+
 ## Three work areas
 
 These are screenshots from an actual project; the music and visual assets shown are not included in this repository.
@@ -43,7 +47,7 @@ These are screenshots from an actual project; the music and visual assets shown 
 
 1. Clone this repository into `ComfyUI/custom_nodes/MiniMaxH3_MV_Planner_xiaoyue`. Cloning the private repository requires GitHub authentication.
 2. Install the parts you intend to run using the [custom-node](#custom-nodes-used-by-the-example-workflow), [model](#models-selected-in-the-example-workflow), and [LoRA](#loras-selected-in-the-example-workflow) lists below. The planner and the sample H3 generation graph are separate layers: planning alone does not require every model used by the sample graph.
-3. Restart ComfyUI and load the workflow. In the main node, select **① New/open project**, import the original track and save. Run the workflow once to register the current project's planning UI, then use **② MV workbench → ③ Final review desk**.
+3. Restart ComfyUI and load the [example workflow](workflows/MiniMaxH3_MV_Planner_xiaoyue_MV工作台v1.0.json). In the main node, select **① New/open project**, import the original track and save. Run the workflow once to register the current project's planning UI, then use **② MV workbench → ③ Final review desk**.
 
 Install only what you need: **project planning** does not require the H3 generation models; **AI outline/prompt generation** needs a working QwenTE inference chain and its models; **running the example video graph** additionally needs the video extensions, H3 models, and LoRAs actually enabled in that graph; **automatic subtitle recognition** alone needs optional local ASR.
 

@@ -59,6 +59,7 @@ class ReleasePackageTests(unittest.TestCase):
                 self.assertNotIn("ACKNOWLEDGEMENTS.md", body)
                 for required in (
                     "LICENSE",
+                    "workflows/MiniMaxH3_MV_Planner_xiaoyue_MV工作台v1.0.json",
                     "https://github.com/tl2012tl/comfyUI-llama-TE",
                     "https://github.com/T8mars/comfyui-minimax-h3-audio-T8",
                     "https://github.com/swan7-py/ComfyUI_Swan_Bits",
