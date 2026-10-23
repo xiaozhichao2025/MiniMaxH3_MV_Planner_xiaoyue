@@ -1,10 +1,10 @@
-# MiniMax H3 MV Workbench · xiaoyue
+# MiniMax H3 MV Workbench
 
 [简体中文](README.md) · [Changelog](CHANGELOG.md) · [Acknowledgements](ACKNOWLEDGEMENTS.md)
 
 **Align MiniMax H3's `17N+5` generation-frame rule with a music video's 24 fps edit points.** That is why this workbench exists. An MV needs cuts placed precisely against beats and lyrics, while H3 requires valid generation lengths. Calculating both by hand can shift a shot off its intended cut. Guide frames and extra generated frames (“bleed”) also make the true in/out points hard to find later in full-length source clips.
 
-**MiniMax H3 MV Workbench · xiaoyue** starts with the original song and its waveform. Place cuts on a visible, absolute-frame 24 fps timeline; the workbench calculates H3-compatible generation windows and records guide, bleed, and final delivery in/out points separately. Lyrics, assets, two-stage AI prompts, and every generated take stay attached to the same shot plan rather than relying on filenames or handwritten edit notes.
+**MiniMax H3 MV Workbench** starts with the original song and its waveform. Place cuts on a visible, absolute-frame 24 fps timeline; the workbench calculates H3-compatible generation windows and records guide, bleed, and final delivery in/out points separately. Lyrics, assets, two-stage AI prompts, and every generated take stay attached to the same shot plan rather than relying on filenames or handwritten edit notes.
 
 For long takes, **continuation shots** derive guide frames from a selected parent take and retain the parent chain and each segment's frame points. The final review desk lets you compare takes, pre-edit, and preview the complete MV. This provides a reliable basis for joining generated segments; visual continuity still depends on the actual model output, so you remain free to choose the best take.
 
