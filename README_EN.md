@@ -2,7 +2,11 @@
 
 [简体中文](README.md) · [Changelog](CHANGELOG.md) · [Acknowledgements](ACKNOWLEDGEMENTS.md)
 
-Making one shot is only part of making a music video. Keeping the lyrics, beat, assets, prompts, continuation chains, and many generated takes aligned is the harder part. **MiniMax H3 MV Workbench · xiaoyue** brings that production plan into ComfyUI: one main node manages the original soundtrack, lyrics, assets, a 24 fps shot timeline, two-stage AI prompting, take history, and final review.
+**Align MiniMax H3's `17N+5` generation-frame rule with a music video's 24 fps edit points.** That is why this workbench exists. An MV needs cuts placed precisely against beats and lyrics, while H3 requires valid generation lengths. Calculating both by hand can shift a shot off its intended cut. Guide frames and extra generated frames (“bleed”) also make the true in/out points hard to find later in full-length source clips.
+
+**MiniMax H3 MV Workbench · xiaoyue** starts with the original song and its waveform. Place cuts on a visible, absolute-frame 24 fps timeline; the workbench calculates H3-compatible generation windows and records guide, bleed, and final delivery in/out points separately. Lyrics, assets, two-stage AI prompts, and every generated take stay attached to the same shot plan rather than relying on filenames or handwritten edit notes.
+
+For long takes, **continuation shots** derive guide frames from a selected parent take and retain the parent chain and each segment's frame points. The final review desk lets you compare takes, pre-edit, and preview the complete MV. This provides a reliable basis for joining generated segments; visual continuity still depends on the actual model output, so you remain free to choose the best take.
 
 The workbench **plans, organizes, and drives** each shot through visible output ports. You still choose and wire the downstream model, sampler, LoRAs, upscaler, and save node. This repository contains the plugin, two bundled Skills, and one editable MiniMax H3 example workflow; it contains **no models, songs, or generated footage**.
 
@@ -25,13 +29,13 @@ These are screenshots from an actual project; the music and visual assets shown 
 ![Final review desk with preview, subtitles and multitrack timeline](assets/screenshots/03-preview-desk.png)
 
 - **Project setup** stores aspect ratio, first/second-pass MP targets, the original track, optional time-aligned vocals, lyrics/subtitles, and shared assets. Project data lives under ComfyUI's `input/xiaoyue_mv_projects/`, outside this repository.
-- **MV workbench** plans shots around the soundtrack and lets you adjust hard cuts, continuations, and dissolves on a 24 fps absolute-frame timeline. Correct lyrics, bind per-shot assets, generate the overall visual outline and individual H3 prompts, then generate selected shots in order. Each successful take keeps its own frame points, seed, and continuation-parent relationship.
+- **MV workbench** plans shots around the soundtrack and lets you adjust hard cuts, continuations, and dissolves on a 24 fps absolute-frame timeline while calculating `17N+5` generation windows and bleed. Correct lyrics, bind per-shot assets, generate the overall visual outline and individual H3 prompts, then generate selected shots in order. Each successful take keeps its own frame points, seed, and continuation-parent relationship.
 - **Final review desk** selects a take for each shot and previews the assembled MV using the original soundtrack; individual generated clips are muted. Export either a caption-free movie plus SRT or an FCP7 XML package with full source clips, relative media paths, and edit markers. The XML targets Premiere's FCP7 XML importer. Jianying/CapCut compatibility depends on its version and import path; the XML is not a native Jianying draft.
 
 ## From soundtrack to deliverable
 
 1. **Set up the project:** import the original song, lyrics/subtitles, and character or scene assets; choose aspect ratio and pass sizes.
-2. **Plan the shots:** place cuts and connections on an absolute-frame, 24 fps timeline. The overall outline and per-shot prompts use the same plan.
+2. **Plan the shots:** place cuts and connections on an absolute-frame, 24 fps timeline. The workbench calculates `17N+5` generation lengths plus guide/bleed frames; the overall outline and per-shot prompts use the same plan.
 3. **Generate and select:** run shots through your own graph. Successful takes retain their seed, original frame points, and continuation-parent take; failures do not masquerade as usable versions.
 4. **Review and deliver:** select takes on a multitrack timeline, preview them with the original song and subtitles, then export a caption-free movie plus SRT or an FCP7 XML package with full source clips and edit markers.
 
