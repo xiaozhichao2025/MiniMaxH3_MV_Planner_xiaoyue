@@ -1,0 +1,4 @@
+interface:
+  display_name: "小月 MV 视觉镜头总纲"
+  short_description: "结合时间轴、歌词和视觉资产生成整片连贯分镜纲领"
+  default_prompt: "使用 $xiaoyue-mv-visual-outline，根据当前 MV Planner 项目、镜头时间轴、歌词和选定视觉资产生成整片镜头纲领。"

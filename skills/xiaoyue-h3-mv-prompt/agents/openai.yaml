@@ -1,0 +1,4 @@
+interface:
+  display_name: "小月 H3 MV 无字幕提示词"
+  short_description: "按镜头、节奏和局部资产绑定生成 H3 MV 提示词"
+  default_prompt: "使用 $xiaoyue-h3-mv-prompt，根据当前 MV Planner 项目和镜头数据生成无画面字幕的 MiniMax H3 提示词。"

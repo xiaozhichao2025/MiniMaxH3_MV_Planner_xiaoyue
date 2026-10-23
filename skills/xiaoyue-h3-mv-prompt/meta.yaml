@@ -1,0 +1,19 @@
+display-name-zh: 小月 H3 MV 中文无字幕提示词
+version: 0.2.0
+xiaoyue-stage: h3_prompt
+output-language: zh-CN
+tag-en: "Video & Animation"
+tag-cn: "视频动画"
+complete-tags-en:
+  - "Video & Animation / Prompt Writing"
+  - "Sound & Music / Planning"
+complete-tags-cn:
+  - "视频动画 / 提示词编写"
+  - "音频音乐 / 计划制定"
+summary-en: "Write shot-aware MiniMax H3 MV prompts without visible subtitles."
+summary-cn: "依据 MV Planner 的镜头、节奏和资产绑定，编写无画面字幕的 MiniMax H3 提示词。"
+desc-en: "Project-specific Chinese-output workflow for MiniMax H3 MV prompt writing. It preserves official English protocol identifiers while writing descriptive field content in Chinese."
+desc-cn: "面向小月 MV Planner 的中文输出提示词 Skill。保留 H3 官方英文协议标识，字段内镜头内容使用中文，并将歌词仅作为隐藏时间与表演依据。"
+author-en: "Xiaoyue Project"
+author-cn: "小月项目"
+source: project-adaptation

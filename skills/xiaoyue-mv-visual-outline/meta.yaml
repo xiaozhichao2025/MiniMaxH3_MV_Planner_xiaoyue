@@ -1,0 +1,19 @@
+display-name-zh: 小月 MV 视觉镜头总纲
+version: 0.1.1
+xiaoyue-stage: visual_outline
+output-language: zh-CN
+tag-en: "Video & Animation"
+tag-cn: "视频动画"
+complete-tags-en:
+  - "Video & Animation / Storyboarding"
+  - "Sound & Music / Planning"
+complete-tags-cn:
+  - "视频动画 / 分镜规划"
+  - "音频音乐 / 计划制定"
+summary-en: "Create a coherent storyboard-ready visual outline for every MV shot."
+summary-cn: "结合音乐时间轴、歌词、项目意图和选定资产，生成整片连贯的自然语言分镜纲领。"
+desc-en: "First-pass multimodal MV direction for Xiaoyue MV Planner. It observes selected project assets, preserves editorial timing and continuity, and produces storyboard-ready shot descriptions without H3 protocol fields or asset indices."
+desc-cn: "面向小月 MV Planner 第一阶段的多模态总分镜 Skill。它真实观察用户选定的项目资产，保持时间轴与前后镜头连续性，输出可用于审阅和分镜图生成的完整镜头描述，不写 H3 协议和资产编号。"
+author-en: "Xiaoyue Project"
+author-cn: "小月项目"
+source: project-original
