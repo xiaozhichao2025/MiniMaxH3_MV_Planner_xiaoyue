@@ -51,13 +51,15 @@
 
 按需安装即可：**只规划项目**不需要下载 H3 生成模型；**用 AI 生成纲领／提示词**需要可用的 QwenTE 推理链及其模型；**运行样例视频生成链**再安装下方视频扩展、H3 模型和工作流实际启用的 LoRA；**自动识别字幕**才需要可选的本地 ASR。
 
+**不用大语言模型也能规划和生成视频。**主节点的 `reasoning_provider` 输入可以留空：用户可自行编辑整片纲领和镜头纲领，并在目标镜头的「H3 提示词」框手写提示词。保存计划后点击镜头生成；若时间轴尚待编译，工作台会先自动保存并编译。视频生成直接读取该镜头的 H3 提示词，不会调用 QwenTE；没有 H3 提示词的镜头不能生成。只有使用「AI 生成整片纲领／H3 提示词」按钮才需要连接并运行 QwenTE Provider。样例工作流里展示的 QwenTE 节点是可选推理支路，不使用时可将其移除，并保持 `reasoning_provider` 不接线。
+
 ### 样例工作流使用的扩展节点
 
 以下清单对应仓库中的**唯一发布样例工作流**，不是所有功能的统一强制依赖。扩展节点放在 `ComfyUI/custom_nodes/`，按各仓库自己的说明安装 Python 依赖并重启 ComfyUI；本工作台节点由本插件提供。
 
 | 扩展 | 在样例工作流中的用途 | 安装地址 |
 | --- | --- | --- |
-| QwenTE | 多模态提示词推理 | [comfyUI-llama-TE](https://github.com/tl2012tl/comfyUI-llama-TE) |
+| QwenTE | 可选：AI 生成纲领／提示词；手写时不需要 | [comfyUI-llama-TE](https://github.com/tl2012tl/comfyUI-llama-TE) |
 | T8 H3 Audio | 语义桥／音频相关节点 | [comfyui-minimax-h3-audio-T8](https://github.com/T8mars/comfyui-minimax-h3-audio-T8) |
 | Swan Bits | 音频驱动／潜空间放大 | [ComfyUI_Swan_Bits](https://github.com/swan7-py/ComfyUI_Swan_Bits) |
 | KJNodes | H3 显存优化／预览 | [ComfyUI-KJNodes](https://github.com/kijai/ComfyUI-KJNodes) |

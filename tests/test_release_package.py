@@ -52,6 +52,7 @@ class ReleasePackageTests(unittest.TestCase):
         for readme in ("README.md", "README_EN.md"):
             with self.subTest(readme=readme):
                 body = (ROOT / readme).read_text("utf-8")
+                self.assertIn("reasoning_provider", body)
                 self.assertIn(
                     "## 特别感谢" if readme == "README.md" else "## Acknowledgements",
                     body,
@@ -119,6 +120,10 @@ class ReleasePackageTests(unittest.TestCase):
             spec.loader.exec_module(package)
             mappings = package.NODE_CLASS_MAPPINGS
             self.assertIn("MiniMaxH3_MV_Planner_xiaoyue", mappings)
+            self.assertIn(
+                "reasoning_provider",
+                mappings["MiniMaxH3_MV_Planner_xiaoyue"].INPUT_TYPES()["optional"],
+            )
             self.assertIn("Xiaoyue_Local_Whisper_Provider", mappings)
             self.assertNotIn("Xiaoyue_LAN_ASR_Provider", mappings)
             self.assertNotIn("MiniMaxH3_MV_Planner_Setup_xiaoyue", mappings)

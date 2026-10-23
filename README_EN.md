@@ -51,13 +51,15 @@ These are screenshots from an actual project; the music and visual assets shown 
 
 Install only what you need: **project planning** does not require the H3 generation models; **AI outline/prompt generation** needs a working QwenTE inference chain and its models; **running the example video graph** additionally needs the video extensions, H3 models, and LoRAs actually enabled in that graph; **automatic subtitle recognition** alone needs optional local ASR.
 
+**You can plan and generate video without a language model.** Leave the main node's `reasoning_provider` input disconnected. You may edit the overall and per-shot outlines yourself and write text in each target shot's “H3 prompt” box. Save the plan, then generate the shot; if the timeline still needs compilation, the workbench saves and compiles it first. Video generation reads that shot's H3 prompt directly and does not call QwenTE. A shot with no H3 prompt cannot be generated. QwenTE Provider is needed only for the “AI generate outline / H3 prompt” actions. The QwenTE nodes shown in the example workflow are an optional inference branch: remove them when not used, and leave `reasoning_provider` unwired.
+
 ### Custom nodes used by the example workflow
 
 This list matches the **single published example workflow**. It is not a universal requirement for every planner feature. Install extensions under `ComfyUI/custom_nodes/`, follow each repository's instructions for Python dependencies, and restart ComfyUI. The MV workbench nodes themselves come from this plugin.
 
 | Extension | Role in the example | Installation |
 | --- | --- | --- |
-| QwenTE | Multimodal prompt inference | [comfyUI-llama-TE](https://github.com/tl2012tl/comfyUI-llama-TE) |
+| QwenTE | Optional AI outline/prompt inference; not needed for handwritten prompts | [comfyUI-llama-TE](https://github.com/tl2012tl/comfyUI-llama-TE) |
 | T8 H3 Audio | Semantic bridge / audio-related nodes | [comfyui-minimax-h3-audio-T8](https://github.com/T8mars/comfyui-minimax-h3-audio-T8) |
 | Swan Bits | Audio driving / latent upscaling | [ComfyUI_Swan_Bits](https://github.com/swan7-py/ComfyUI_Swan_Bits) |
 | KJNodes | H3 memory optimization / preview | [ComfyUI-KJNodes](https://github.com/kijai/ComfyUI-KJNodes) |
