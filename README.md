@@ -1,6 +1,6 @@
 # MiniMax H3 MV 工作台
 
-[English](README_EN.md) · [更新记录](CHANGELOG.md) · [特别感谢](ACKNOWLEDGEMENTS.md)
+[English](README_EN.md) · [更新记录](CHANGELOG.md) · [特别感谢](#特别感谢)
 
 **让 MiniMax H3 的 `17N+5` 生成帧数，与 MV 的 24 fps 音乐切点对齐。** 这是做这个工作台的初衷：MV 要跟着节拍和唱词精确切镜，H3 的生成帧数又必须符合 `17N+5`。两套尺度并存，手工计算容易偏位；生成时需要留给模型的引导帧与出血区，也让后期很难从完整素材里找到真正的剪辑点。
 
@@ -122,5 +122,15 @@
 
 ## 开源许可与第三方内容
 
-本项目原创插件代码与文档采用 [MIT License](LICENSE)。这意味着你可以使用、修改和再分发，但须保留版权与许可证声明。仓库中的样例工作流基于社区分享的方案，并调用独立的扩展节点与模型；**MIT 不替代这些上游项目、模型权重、LoRA 或用户素材各自的许可**。下载、使用和再分发第三方内容时，请遵守其来源页面的条款。特别感谢见 [ACKNOWLEDGEMENTS.md](ACKNOWLEDGEMENTS.md)。
+本项目原创插件代码与文档采用 [MIT License](LICENSE)。这意味着你可以使用、修改和再分发，但须保留版权与许可证声明。仓库中的样例工作流基于社区分享的方案，并调用独立的扩展节点与模型；**MIT 不替代这些上游项目、模型权重、LoRA 或用户素材各自的许可**。下载、使用和再分发第三方内容时，请遵守其来源页面的条款。
+
+## 特别感谢
+
+这套 MV 工作台离不开 ComfyUI 社区的分享与启发。特别感谢：
+
+- **黑鹤001** · [B 站](https://space.bilibili.com/515231056)：项目作者从入门 ComfyUI 起便一路跟着他的视频学习，收获很多；目前使用的 ComfyUI 整合包也来自他的分享。
+- **T8** · [B 站](https://space.bilibili.com/385085361) · [GitHub](https://github.com/T8mars?tab=repositories)：本项目双采工作流的底子来自 T8 分享的方案，语义桥部分也受益于他的工作。
+- **Swan鹄仙** · [B 站](https://space.bilibili.com/592988861) · [Swan Bits GitHub](https://github.com/swan7-py/ComfyUI_Swan_Bits)：SelfLift 的分拆帮助我们将声音驱动逻辑解耦接入，也避免仅为这一能力安装另一套大型节点包。
+
+也感谢 ComfyUI 学习与使用过程中，所有乐于分享经验、工作流和开源成果的社区朋友。
 

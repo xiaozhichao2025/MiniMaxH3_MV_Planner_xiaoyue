@@ -46,11 +46,17 @@ class ReleasePackageTests(unittest.TestCase):
         license_text = (ROOT / "LICENSE").read_text("utf-8")
         self.assertIn("MIT License", license_text)
         self.assertIn("Permission is hereby granted, free of charge", license_text)
+        self.assertFalse((ROOT / "ACKNOWLEDGEMENTS.md").exists())
         workflow = ROOT / "workflows" / "MiniMaxH3_MV_Planner_xiaoyue_MV工作台v1.0.json"
         self.assertTrue(workflow.is_file())
         for readme in ("README.md", "README_EN.md"):
             with self.subTest(readme=readme):
                 body = (ROOT / readme).read_text("utf-8")
+                self.assertIn(
+                    "## 特别感谢" if readme == "README.md" else "## Acknowledgements",
+                    body,
+                )
+                self.assertNotIn("ACKNOWLEDGEMENTS.md", body)
                 for required in (
                     "LICENSE",
                     "https://github.com/tl2012tl/comfyUI-llama-TE",

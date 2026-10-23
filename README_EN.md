@@ -1,6 +1,6 @@
 # MiniMax H3 MV Workbench
 
-[简体中文](README.md) · [Changelog](CHANGELOG.md) · [Acknowledgements](ACKNOWLEDGEMENTS.md)
+[简体中文](README.md) · [Changelog](CHANGELOG.md) · [Acknowledgements](#acknowledgements)
 
 **Align MiniMax H3's `17N+5` generation-frame rule with a music video's 24 fps edit points.** That is why this workbench exists. An MV needs cuts placed precisely against beats and lyrics, while H3 requires valid generation lengths. Calculating both by hand can shift a shot off its intended cut. Guide frames and extra generated frames (“bleed”) also make the true in/out points hard to find later in full-length source clips.
 
@@ -122,4 +122,14 @@ Both bundled and user-added Skills are read **only from this plugin's `skills/` 
 
 ## License and third-party content
 
-Original plugin code and documentation in this project are under the [MIT License](LICENSE). You may use, modify, and redistribute them while retaining the copyright and license notice. The example workflow builds on community-shared techniques and calls independently distributed extensions and models. **MIT does not replace the respective licenses of those upstream projects, model weights, LoRAs, or user-supplied media.** Check the source terms before downloading, using, or redistributing third-party content. See [Acknowledgements](ACKNOWLEDGEMENTS.md) for community credits.
+Original plugin code and documentation in this project are under the [MIT License](LICENSE). You may use, modify, and redistribute them while retaining the copyright and license notice. The example workflow builds on community-shared techniques and calls independently distributed extensions and models. **MIT does not replace the respective licenses of those upstream projects, model weights, LoRAs, or user-supplied media.** Check the source terms before downloading, using, or redistributing third-party content.
+
+## Acknowledgements
+
+This MV workbench owes a great deal to the ComfyUI community's shared knowledge and tools. Special thanks to:
+
+- **黑鹤001** · [Bilibili](https://space.bilibili.com/515231056): the project author learned ComfyUI through his videos from the beginning and still uses a ComfyUI distribution he shared.
+- **T8** · [Bilibili](https://space.bilibili.com/385085361) · [GitHub](https://github.com/T8mars?tab=repositories): his shared approach formed the basis of the example two-pass workflow, and his semantic-bridge work also helped this project.
+- **Swan鹄仙** · [Bilibili](https://space.bilibili.com/592988861) · [Swan Bits GitHub](https://github.com/swan7-py/ComfyUI_Swan_Bits): the SelfLift split made it possible to connect audio driving as an independent part without installing another large node package solely for that feature.
+
+Thanks also to everyone in the ComfyUI community who shares knowledge, workflows, and open-source work.

@@ -1,9 +1,8 @@
 # This repository is only the MV workbench package. Project docs, local data,
 # generated media, credentials, and scratch scripts are deliberately excluded.
-# The public acknowledgements are the sole documentation exception.
+# Public-facing documentation is kept in the root README and changelog.
 /*
 !/.gitignore
-!/ACKNOWLEDGEMENTS.md
 !/README.md
 !/README_EN.md
 !/CHANGELOG.md
