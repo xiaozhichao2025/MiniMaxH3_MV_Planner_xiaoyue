@@ -713,5 +713,13 @@ def record_plan(project: dict[str, Any], plan: dict[str, Any],
         manifest["updated_at"] = _now()
         _write_json_atomic(plan_path, plan)
         _write_json_atomic(manifest_path, manifest)
+    # A cut/crossfade makes already-generated continuation clips usable as
+    # independent edits even if this seam is reconnected in a later plan.
+    try:
+        from .generation_store import mark_independent_edit_allowed
+    except ImportError:  # Standalone tests.
+        from generation_store import mark_independent_edit_allowed
+    mark_independent_edit_allowed(
+        project_id, plan.get("shots") or [], plan.get("transitions") or [], roots)
     return project_handle(manifest, layout)
 

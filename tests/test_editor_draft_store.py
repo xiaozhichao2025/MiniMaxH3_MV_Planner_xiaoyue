@@ -5,6 +5,7 @@ import unittest
 from pathlib import Path
 
 import editor_draft_store
+import generation_store
 import project_store
 
 
@@ -59,3 +60,29 @@ class EditorDraftStoreTests(unittest.TestCase):
         editor_draft_store.save_editor_plan(self.project_id, new, self.roots)
         state = editor_draft_store.load_editor_state(self.project_id, self.roots)
         self.assertEqual(state["draft"]["plan"]["audio"]["fingerprint"], "new")
+
+    def test_transition_checkpoint_unlocks_existing_child_after_disconnect(self):
+        child = generation_store.begin_version(
+            self.project_id, "uid_b", editorial_label="01_b",
+            window_id="window_b", prompt_fingerprint="prompt",
+            window_fingerprint="plan", deliver_frames=100,
+            parent_version_id="parent_v1", incoming_transition="long_take",
+            roots=self.roots)
+        shots = [
+            {"shot_uid": "uid_a", "start_frame": 0, "end_frame": 100},
+            {"shot_uid": "uid_b", "start_frame": 100, "end_frame": 200},
+        ]
+        plan = {"project": {"id": self.project_id}, "editor_revision": 1,
+                "shots": shots, "transitions": [{"type": "long_take"}]}
+        editor_draft_store.save_editor_plan(self.project_id, plan, self.roots)
+        checkpoint = {"base_revision": 1, "shots": shots,
+                      "transitions": [{"type": "hard_cut"}]}
+        editor_draft_store.save_timeline_checkpoint(
+            self.project_id, checkpoint, self.roots)
+        checkpoint["transitions"] = [{"type": "long_take"}]
+        editor_draft_store.save_timeline_checkpoint(
+            self.project_id, checkpoint, self.roots)
+        version = generation_store.load_versions(
+            self.project_id, self.roots)["shots"]["uid_b"]["versions"][0]
+        self.assertEqual(version["id"], child["id"])
+        self.assertTrue(version["independent_edit_allowed"])

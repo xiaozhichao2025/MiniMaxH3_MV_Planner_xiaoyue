@@ -6,10 +6,14 @@ Plugin versions use `vMAJOR.MINOR.PATCH` Git tags. The example workflow's `v1.0`
 
 ## 未发布 / Unreleased
 
+- FCP7 XML 工程时间线按所选版本帧点预剪实切、续写与叠化；打包的源视频仍完整，可在 PR 中拉回裁剪余量。
+- 同一工程 ZIP 加入原生 Premiere `.prproj` 与搬迁后素材重定位入口；合成素材测试工程在 PR、剪映中均能打开，正式 MV 全量包仍待验收。
 - 中英文 README 补齐样例工作流扩展节点、模型与 LoRA 的目录和来源，以及可选 ASR、Skill 安装位置和按需安装说明。
 - 为原创插件代码与文档准备 MIT 许可证，并明确第三方扩展、模型、LoRA 与用户素材不因此获得 MIT 授权。
 - 使用教程与跨版本导入兼容性仍待验证；本节不对应 Git 标签，也不表示仓库已经公开。
 
+- The FCP7 XML timeline now contains the selected hard cuts, continuations, and dissolves while packaging full source media for reversible trims in Premiere.
+- The same ZIP now includes a native Premiere `.prproj` and a media relinker for moved packages. Synthetic test projects opened in both Premiere and Jianying; the full MV package still needs acceptance testing.
 - Completed dependency, model, LoRA, optional ASR, and Skill-installation guidance in both READMEs.
 - Prepared MIT licensing for original plugin code and documentation, with third-party licensing boundaries stated explicitly.
 - Tutorial and cross-version import checks remain pending; this section is untagged and does not indicate public release.

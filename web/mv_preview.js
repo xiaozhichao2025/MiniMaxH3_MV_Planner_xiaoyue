@@ -7,7 +7,7 @@ const TRACK_GUTTER = 54;
 const openDesks = new WeakMap();
 const EXPORT_NAMES = {
     movie: "无字成片 + SRT",
-    fcp_xml: "FCP7 XML 通用工程包",
+    fcp_xml: "FCP7 XML + PR 工程包",
     premiere: "旧版 Premiere 工程包",
     jianying: "旧版剪映草稿包",
 };
@@ -108,6 +108,7 @@ class PreviewDesk {
         this.activeShotUid = "";
         this.followedShotUid = "";
         this.followedSubtitleIndex = -1;
+        this.suppressFollowScroll = false;
         this.shotRows = new Map();
         this.subtitleRows = [];
         this.reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -121,7 +122,7 @@ class PreviewDesk {
                     <div><h2 id="xp-dialog-title">MV 最终验收剪辑台</h2><p class="xp-project"></p></div>
                     <div class="xp-header-actions">
                         <span class="xp-status" role="status" aria-live="polite"></span>
-                        <details class="xp-export-menu"><summary>导出</summary><div class="xp-export-options" aria-label="导出格式"><button type="button" data-export-kind="movie">无字成片 + SRT</button><button type="button" data-export-kind="fcp_xml">FCP7 XML 通用工程包</button><p class="xp-export-error" role="alert" hidden></p></div></details>
+                        <details class="xp-export-menu"><summary>导出</summary><div class="xp-export-options" aria-label="导出格式"><button type="button" data-export-kind="movie">无字成片 + SRT</button><button type="button" data-export-kind="fcp_xml">FCP7 XML + PR 工程包</button><p class="xp-export-error" role="alert" hidden></p></div></details>
                         <button type="button" class="xp-refresh">刷新工程</button>
                         <button type="button" class="xp-close" aria-label="关闭剪辑台">关闭</button>
                     </div>
@@ -572,7 +573,7 @@ class PreviewDesk {
             row.dataset.shotUid = shot.shot_uid;
             const header = nodeElement("button", "xp-shot-header");
             header.type = "button";
-            const label = nodeElement("strong", "", shot.label);
+            const label = nodeElement("strong", "", shot.selected_label || shot.label);
             const detail = nodeElement("span", "", `${this.manifest.tracks[shot.track]} 轨`);
             header.append(label, detail);
             header.addEventListener("click", () => {
@@ -587,13 +588,21 @@ class PreviewDesk {
             for (const version of shot.versions) {
                 const failed = version.status === "failed";
                 const number = `v${version.number || "?"}`;
+                const transitionName = {
+                    hard_cut: "切镜", long_take: "续写", crossfade: "叠化",
+                }[version.incoming_transition] || "切镜";
+                const history = `生成时 ${version.editorial_label || shot.label} · ${transitionName}`;
                 const button = nodeElement("button", "xp-version", number);
                 button.type = "button";
                 button.disabled = !version.playable;
                 button.setAttribute("aria-pressed", String(version.id === shot.selected_version_id));
-                button.setAttribute("aria-label", `${shot.label} ${number}${failed ? "，生成失败" : version.status !== "completed" ? "，生成中" : version.playable ? "" : "，素材不可用"}`);
+                button.setAttribute("aria-label", `${shot.selected_label || shot.label} ${number}${failed ? "，生成失败" : version.status !== "completed" ? "，生成中" : version.playable ? "" : "，素材不可用"}`);
                 button.title = version.playable
-                    ? `选择 ${shot.label} ${number}；续写会同步选中其实际前段`
+                    ? `选择 ${history} ${number}${version.parent_version_id
+                        ? version.independent_edit_allowed
+                            ? "；此版曾断开续写，可与其他前段切接，选回原父版仍可续写"
+                            : "；此续写版只接生成时的原父版"
+                        : ""}${version.transition_recorded ? "" : "；旧版本接法根据记录推断"}`
                     : failed ? `生成失败：${version.error || "请在主工作台查看任务记录"}`
                         : "尚未完成，或素材文件缺失／交付帧范围无效";
                 button.addEventListener("click", () => this.selectVersion(shot, version));
@@ -612,8 +621,11 @@ class PreviewDesk {
 
     async selectVersion(shot, version) {
         if (!version.playable) return;
-        this.status(`确认 ${shot.label} v${version.number}…`);
+        this.status(`确认 ${shot.selected_label || shot.label} v${version.number}…`);
         try {
+            const shotsPane = this.dialog.querySelector(".xp-shots");
+            const subtitlesPane = this.dialog.querySelector(".xp-subtitles");
+            const timelinePane = this.dialog.querySelector(".xp-timeline-scroll");
             const response = await api.fetchApi("/xiaoyue-mv/preview/select", {
                 method: "POST", headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
@@ -623,11 +635,25 @@ class PreviewDesk {
                 }),
             });
             const result = await responseJson(response);
+            const positions = [shotsPane, subtitlesPane, timelinePane].map((pane) =>
+                ({ top: pane.scrollTop, left: pane.scrollLeft }));
             this.activeShotUid = shot.shot_uid;
-            this.applyManifest(result.manifest);
+            this.suppressFollowScroll = true;
+            try {
+                this.applyManifest(result.manifest);
+                [shotsPane, subtitlesPane, timelinePane].forEach((pane, index) => {
+                    pane.scrollTop = positions[index].top;
+                    pane.scrollLeft = positions[index].left;
+                });
+            } finally {
+                this.suppressFollowScroll = false;
+            }
+            const selectedRow = this.shotRows.get(shot.shot_uid);
+            selectedRow?.querySelector('.xp-version[aria-pressed="true"]')?.focus({ preventScroll: true });
             const count = Object.keys(result.selected_ancestors || {}).length;
-            this.status(count > 1 ? `已选 ${shot.label}，并同步 ${count - 1} 个续写前段` : `已选 ${shot.label} v${version.number}`);
-            this.seekFrame(version.timeline_in_frame);
+            const currentLabel = result.manifest.shots.find((item) => item.shot_uid === shot.shot_uid)?.selected_label
+                || shot.selected_label || shot.label;
+            this.status(count > 1 ? `已选 ${currentLabel}，并同步 ${count - 1} 个续写前段` : `已选 ${currentLabel} v${version.number}`);
         } catch (error) {
             this.status(error.message || String(error), true);
         }
@@ -671,7 +697,7 @@ class PreviewDesk {
     }
 
     followListRow(container, row) {
-        if (!row || !container.clientHeight) return;
+        if (this.suppressFollowScroll || !row || !container.clientHeight) return;
         const viewport = container.getBoundingClientRect();
         const target = row.getBoundingClientRect();
         const delta = target.top + target.height / 2 - viewport.top - container.clientHeight / 2;
@@ -752,12 +778,15 @@ class PreviewDesk {
                 const version = shot.versions.find((item) => item.id === shot.selected_version_id);
                 const start = version?.timeline_in_frame ?? shot.planned_start_frame;
                 const end = version?.timeline_out_frame_exclusive ?? shot.planned_end_frame_exclusive;
-                const clip = nodeElement("button", "xp-clip", `${shot.label}${version?.number ? ` · v${version.number}` : " · 缺素材"}`);
+                const label = shot.selected_label || shot.label;
+                const isCrossfade = shot.incoming_transition === "crossfade";
+                const clip = nodeElement("button", "xp-clip", `${label}${version?.number ? ` · v${version.number}` : " · 缺素材"}${isCrossfade ? " · 叠化" : ""}`);
                 clip.type = "button";
                 clip.classList.toggle("is-missing", !shot.selected_playable);
+                clip.classList.toggle("is-crossfade", isCrossfade);
                 clip.style.left = `${TRACK_GUTTER + start * this.pixelsPerFrame}px`;
                 clip.style.width = `${Math.max(5, (end - start) * this.pixelsPerFrame)}px`;
-                clip.title = `${shot.label} · ${timecode(start)}–${timecode(end)} · ${this.manifest.tracks[track]} 轨${shot.selection_issue ? ` · ${shot.selection_issue}` : ""}`;
+                clip.title = `${label} · ${timecode(start)}–${timecode(end)} · ${this.manifest.tracks[track]} 轨${isCrossfade ? " · 与前段叠化" : ""}${shot.selection_issue ? ` · ${shot.selection_issue}` : ""}`;
                 clip.addEventListener("click", () => {
                     this.activeShotUid = shot.shot_uid;
                     this.seekFrame(start);
@@ -898,7 +927,7 @@ class PreviewDesk {
         const playheadX = TRACK_GUTTER + frame * this.pixelsPerFrame;
         this.dialog.querySelector(".xp-playhead").style.left = `${playheadX}px`;
         const viewport = this.dialog.querySelector(".xp-timeline-scroll");
-        if (!this.fit && this.timelinePointerId === null && (playheadX < viewport.scrollLeft + 30
+        if (!this.suppressFollowScroll && !this.fit && this.timelinePointerId === null && (playheadX < viewport.scrollLeft + 30
                 || playheadX > viewport.scrollLeft + viewport.clientWidth - 30)) {
             viewport.scrollLeft = Math.max(0, playheadX - viewport.clientWidth * .25);
         }

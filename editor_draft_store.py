@@ -11,8 +11,10 @@ from typing import Any
 
 try:
     from .project_store import load_project, normalize_project_id
+    from .generation_store import mark_independent_edit_allowed
 except ImportError:  # Standalone tests.
     from project_store import load_project, normalize_project_id
+    from generation_store import mark_independent_edit_allowed
 
 
 _LOCK = threading.RLock()
@@ -106,6 +108,8 @@ def save_editor_plan(project_id: str, plan: dict[str, Any],
         _write(path, {"schema": "xiaoyue.mv.editor-draft.v1",
                       "project_id": project_id, "revision": revision,
                       "plan": plan})
+    mark_independent_edit_allowed(
+        project_id, plan["shots"], plan.get("transitions") or [], roots)
 
 
 def save_timeline_checkpoint(project_id: str, checkpoint: dict[str, Any],
@@ -141,6 +145,8 @@ def save_timeline_checkpoint(project_id: str, checkpoint: dict[str, Any],
                       "audio_fingerprint": audio_fingerprint,
                       "shots": checkpoint["shots"],
                       "transitions": checkpoint["transitions"]})
+    mark_independent_edit_allowed(
+        project_id, checkpoint["shots"], checkpoint["transitions"], roots)
 
 
 def save_shot_patch(project_id: str, patch: dict[str, Any],

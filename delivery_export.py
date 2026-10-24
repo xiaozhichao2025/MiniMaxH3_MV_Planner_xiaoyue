@@ -23,8 +23,10 @@ from xml.etree import ElementTree as ET
 
 try:
     from .preview_desk import FPS, _project_file, subtitle_srt
+    from .premiere_native import project_bytes as premiere_project_bytes
 except ImportError:  # Standalone test runner imports modules from this folder.
     from preview_desk import FPS, _project_file, subtitle_srt
+    from premiere_native import project_bytes as premiere_project_bytes
 
 
 EXPORT_KINDS = {"movie", "fcp_xml"}
@@ -121,21 +123,27 @@ def probe_audio(path: Path, ffprobe: str = "ffprobe") -> dict[str, int]:
             "depth": depth, "frames": math.floor(seconds * FPS + 1e-6)}
 
 
-def _allocate_full_tracks(clips: list[dict[str, Any]]) -> None:
+def _allocate_edit_tracks(clips: list[dict[str, Any]]) -> None:
     placed: list[tuple[int, int, int]] = []
     by_uid: dict[str, dict[str, Any]] = {}
     normal_preference = 0
     previous_track = -1
-    for clip in clips:
-        start, end = clip["full_clip_start_frame"], clip["full_clip_end_frame_exclusive"]
+    for clip_index, clip in enumerate(clips):
+        start, end = clip["timeline_in_frame"], clip["timeline_out_frame_exclusive"]
 
         def available(track: int) -> bool:
             return all(track != old or end <= old_start or start >= old_end
                        for old, old_start, old_end in placed)
 
         parent = by_uid.get(clip["parent_shot_uid"])
-        if clip["incoming_transition"] == "long_take" and parent:
-            track = parent["track"] + 1
+        previous = clips[clip_index - 1] if clip_index else None
+        overlapping_fade = bool(
+            clip["incoming_transition"] == "crossfade" and previous
+            and clip["timeline_in_frame"] < previous["timeline_out_frame_exclusive"])
+        if ((clip["incoming_transition"] == "long_take" and parent)
+                or overlapping_fade):
+            track = (parent["track"] if parent and not overlapping_fade
+                     else previous["track"]) + 1
             while not available(track):
                 track += 1
         else:
@@ -166,7 +174,8 @@ def build_export_snapshot(manifest: dict[str, Any], project: dict[str, Any],
     clips = []
     selected_by_uid = {}
     for shot in shots:
-        label = str(shot.get("label") or shot.get("shot_uid") or "")
+        label = str(shot.get("selected_label") or shot.get("label")
+                    or shot.get("shot_uid") or "")
         if not shot.get("selection_confirmed"):
             raise ValueError(f"镜头 {label} 的多个版本尚未明确确认。")
         if not shot.get("selected_playable"):
@@ -190,12 +199,17 @@ def build_export_snapshot(manifest: dict[str, Any], project: dict[str, Any],
         uid = str(shot["shot_uid"])
         parent_version_id = str(version.get("parent_version_id") or "")
         incoming = str(shot.get("incoming_transition") or "hard_cut")
-        parent_uid = str(shots[len(clips) - 1].get("shot_uid")) if incoming == "long_take" and clips else ""
+        parent_uid = str(shot.get("parent_shot_uid") or "")
+        if incoming == "long_take" and not parent_uid and parent_version_id:
+            # Compatibility with older preview manifests, which only exposed
+            # the immediate predecessor of a continuation.
+            parent_uid = str(shots[len(clips) - 1].get("shot_uid")) if clips else ""
         if incoming == "long_take" and (not parent_uid or
+                (clips and parent_uid != clips[-1]["shot_uid"]) or
                 selected_by_uid.get(parent_uid) != parent_version_id):
             raise ValueError(f"镜头 {label} 的续写父版本链不匹配。")
-        if incoming != "long_take" and parent_version_id:
-            raise ValueError(f"镜头 {label} 的版本保留了意外的续写父节点。")
+        if incoming != "long_take" and parent_uid:
+            raise ValueError(f"镜头 {label} 的剪辑接法保留了意外的续写父节点。")
         selected_by_uid[uid] = str(version["id"])
         clips.append({
             "shot": label, "shot_uid": uid, "version": int(version.get("number") or 0),
@@ -210,17 +224,15 @@ def build_export_snapshot(manifest: dict[str, Any], project: dict[str, Any],
             "audio_sample_rate": info.get("audio_sample_rate", 48000),
             "audio_depth": info.get("audio_depth", 16),
         })
-    offset = max(0, *(clip["source_in_frame"] - clip["timeline_in_frame"]
-                      for clip in clips))
     for clip in clips:
         clip["full_clip_start_frame"] = (clip["timeline_in_frame"]
-                                         - clip["source_in_frame"] + offset)
+                                         - clip["source_in_frame"])
         clip["full_clip_end_frame_exclusive"] = (clip["full_clip_start_frame"]
                                                   + clip["source_total_frames"])
         clip["source_file"] = (f"media/video/{_safe_name(clip['shot'])}"
                                f"_v{clip['version']}_{_safe_name(clip['version_id'])}"
                                f"{Path(clip['source_path']).suffix.lower()}")
-    _allocate_full_tracks(clips)
+    _allocate_edit_tracks(clips)
     subtitles = list(manifest.get("subtitles") or [])
     total = int(manifest.get("total_frames") or 0)
     if total <= 0:
@@ -231,7 +243,7 @@ def build_export_snapshot(manifest: dict[str, Any], project: dict[str, Any],
     return {
         "schema": "xiaoyue.mv.delivery-export.v1", "fps": FPS,
         "project": manifest["project"], "total_frames": total,
-        "project_offset_frames": offset, "master_path": str(master),
+        "project_offset_frames": 0, "master_path": str(master),
         "master_file": f"media/audio/master{master.suffix.lower()}",
         "master_audio_info": audio_info,
         "clips": clips, "subtitles": subtitles,
@@ -307,6 +319,28 @@ def _clip_link(parent: ET.Element, clip_ref: str, media_type: str,
         _xml_text(link, "groupindex", group_index)
 
 
+def _opacity_fade_in(item: ET.Element, source_start: int,
+                     source_end: int) -> None:
+    """Premiere's FCP7 interchange form: source-frame opacity keyframes."""
+    effect = ET.SubElement(ET.SubElement(item, "filter"), "effect")
+    _xml_text(effect, "name", "Opacity")
+    _xml_text(effect, "effectid", "opacity")
+    _xml_text(effect, "effectcategory", "motion")
+    _xml_text(effect, "effecttype", "motion")
+    _xml_text(effect, "mediatype", "video")
+    _xml_text(effect, "pproBypass", "false")
+    parameter = ET.SubElement(effect, "parameter", authoringApp="PremierePro")
+    _xml_text(parameter, "parameterid", "opacity")
+    _xml_text(parameter, "name", "opacity")
+    _xml_text(parameter, "valuemin", 0)
+    _xml_text(parameter, "valuemax", 100)
+    _xml_text(parameter, "value", 100)
+    for frame, value in ((source_start, 0), (source_end, 100)):
+        keyframe = ET.SubElement(parameter, "keyframe")
+        _xml_text(keyframe, "when", frame)
+        _xml_text(keyframe, "value", value)
+
+
 def fcp7_xml(snapshot: dict[str, Any]) -> bytes:
     """Premiere-style FCP7 interchange XML with relative media references."""
     root = ET.Element("xmeml", version="4")
@@ -314,9 +348,8 @@ def fcp7_xml(snapshot: dict[str, Any]) -> bytes:
     # Each export is a distinct Premiere sequence, even when the same sources
     # were selected and only their recorded cut points changed.
     _xml_text(sequence, "uuid", uuid.uuid4())
-    duration = max(
-        snapshot["total_frames"] + snapshot["project_offset_frames"],
-        *(clip["full_clip_end_frame_exclusive"] for clip in snapshot["clips"]))
+    duration = max(snapshot["total_frames"],
+                   *(clip["timeline_out_frame_exclusive"] for clip in snapshot["clips"]))
     _xml_text(sequence, "duration", duration)
     _rate(sequence)
     _xml_text(sequence, "name", str(snapshot["project"].get("name") or
@@ -330,8 +363,12 @@ def fcp7_xml(snapshot: dict[str, Any]) -> bytes:
     max_video_track = max(c["track"] for c in snapshot["clips"])
     video_lanes = {
         number: sorted((c for c in snapshot["clips"] if c["track"] == number),
-                       key=lambda c: c["full_clip_start_frame"])
+                       key=lambda c: c["timeline_in_frame"])
         for number in range(max_video_track + 1)
+    }
+    previous_by_version = {
+        clip["version_id"]: snapshot["clips"][index - 1]
+        for index, clip in enumerate(snapshot["clips"]) if index
     }
     lane_channels = {
         number: min(2, max((c.get("audio_channels", 0) for c in clips), default=0))
@@ -353,12 +390,12 @@ def fcp7_xml(snapshot: dict[str, Any]) -> bytes:
             _xml_text(item, "enabled", "TRUE")
             _xml_text(item, "duration", clip["source_total_frames"])
             _rate(item)
-            _xml_text(item, "start", clip["full_clip_start_frame"])
-            _xml_text(item, "end", clip["full_clip_end_frame_exclusive"])
-            _xml_text(item, "in", 0)
-            _xml_text(item, "out", clip["source_total_frames"])
-            _xml_text(item, "pproTicksIn", 0)
-            _xml_text(item, "pproTicksOut", clip["source_total_frames"] * 10584000000)
+            _xml_text(item, "start", clip["timeline_in_frame"])
+            _xml_text(item, "end", clip["timeline_out_frame_exclusive"])
+            _xml_text(item, "in", clip["source_in_frame"])
+            _xml_text(item, "out", clip["source_out_frame_exclusive"])
+            _xml_text(item, "pproTicksIn", clip["source_in_frame"] * 10584000000)
+            _xml_text(item, "pproTicksOut", clip["source_out_frame_exclusive"] * 10584000000)
             _xml_text(item, "alphatype", "none")
             _xml_text(item, "pixelaspectratio", "square")
             _xml_text(item, "anamorphic", "FALSE")
@@ -377,6 +414,14 @@ def fcp7_xml(snapshot: dict[str, Any]) -> bytes:
                 _audio_sample(faudio, {"depth": clip["audio_depth"],
                                        "sample_rate": clip["audio_sample_rate"]})
                 _xml_text(faudio, "channelcount", clip["audio_channels"])
+            previous = previous_by_version.get(clip["version_id"])
+            if clip["incoming_transition"] == "crossfade" and previous:
+                overlap_end = min(previous["timeline_out_frame_exclusive"],
+                                  clip["timeline_out_frame_exclusive"])
+                overlap = overlap_end - clip["timeline_in_frame"]
+                if overlap > 0:
+                    _opacity_fade_in(item, clip["source_in_frame"],
+                                     clip["source_in_frame"] + overlap)
             source_track = ET.SubElement(item, "sourcetrack")
             _xml_text(source_track, "mediatype", "video")
             _xml_text(source_track, "trackindex", 1)
@@ -430,12 +475,12 @@ def fcp7_xml(snapshot: dict[str, Any]) -> bytes:
                 _xml_text(aitem, "enabled", "TRUE")
                 _xml_text(aitem, "duration", clip["source_total_frames"])
                 _rate(aitem)
-                _xml_text(aitem, "start", clip["full_clip_start_frame"])
-                _xml_text(aitem, "end", clip["full_clip_end_frame_exclusive"])
-                _xml_text(aitem, "in", 0)
-                _xml_text(aitem, "out", clip["source_total_frames"])
-                _xml_text(aitem, "pproTicksIn", 0)
-                _xml_text(aitem, "pproTicksOut", clip["source_total_frames"] * 10584000000)
+                _xml_text(aitem, "start", clip["timeline_in_frame"])
+                _xml_text(aitem, "end", clip["timeline_out_frame_exclusive"])
+                _xml_text(aitem, "in", clip["source_in_frame"])
+                _xml_text(aitem, "out", clip["source_out_frame_exclusive"])
+                _xml_text(aitem, "pproTicksIn", clip["source_in_frame"] * 10584000000)
+                _xml_text(aitem, "pproTicksOut", clip["source_out_frame_exclusive"] * 10584000000)
                 ET.SubElement(aitem, "file", id=f"file-{clip['version_id']}")
                 source_track = ET.SubElement(aitem, "sourcetrack")
                 _xml_text(source_track, "mediatype", "audio")
@@ -468,8 +513,8 @@ def fcp7_xml(snapshot: dict[str, Any]) -> bytes:
         _xml_text(aitem, "enabled", "TRUE")
         _xml_text(aitem, "duration", audio_frames)
         _rate(aitem)
-        _xml_text(aitem, "start", snapshot["project_offset_frames"])
-        _xml_text(aitem, "end", snapshot["project_offset_frames"] + audio_frames)
+        _xml_text(aitem, "start", 0)
+        _xml_text(aitem, "end", audio_frames)
         _xml_text(aitem, "in", 0)
         _xml_text(aitem, "out", audio_frames)
         _xml_text(aitem, "pproTicksIn", 0)
@@ -506,8 +551,8 @@ def fcp7_xml(snapshot: dict[str, Any]) -> bytes:
             marker = ET.SubElement(sequence, "marker")
             _xml_text(marker, "name", f"{clip['shot']} v{clip['version']} 建议{edge}点")
             _xml_text(marker, "comment", f"源片帧 {clip['source_in_frame']}–{clip['source_out_frame_exclusive']}；见 markers.csv")
-            _xml_text(marker, "in", point + snapshot["project_offset_frames"])
-            _xml_text(marker, "out", point + snapshot["project_offset_frames"])
+            _xml_text(marker, "in", point)
+            _xml_text(marker, "out", point)
     ET.indent(root, space="  ")
     return b'<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE xmeml>\n' + ET.tostring(root, encoding="utf-8")
 
@@ -654,6 +699,9 @@ def run_export(snapshot: dict[str, Any], kind: str, export_root: Path,
                progress: Callable[[str, float], None], ffmpeg: str = "ffmpeg") -> dict[str, str]:
     if kind not in EXPORT_KINDS:
         raise ValueError("未知的导出方案。")
+    # Validate the native project before copying potentially large source
+    # videos. Unsupported audio layouts then fail without wasted disk I/O.
+    portable_project = premiere_project_bytes(snapshot) if kind == "fcp_xml" else None
     export_root.mkdir(parents=True, exist_ok=True)
     final = export_root / export_id
     staging = export_root / f".{export_id}.partial"
@@ -680,30 +728,43 @@ def run_export(snapshot: dict[str, Any], kind: str, export_root: Path,
         notes = [
             "小玥 MV 验收导出包", "",
             "此包只包含导出时验收台已选中的成功版本、每个版本的完整源片、完整原曲及正式字幕。",
-            "selected_versions.json 和 markers.csv 记录 24 fps 的总轨入/出点、源片入/出点、完整源片占位和续写父版本。",
-            f"工程前置空白偏移：{snapshot['project_offset_frames']} 帧。原曲与所有标记同步偏移；直接成片不含这段空白。",
-            "视频轨音量为零，最终声音只使用原曲；源片未预裁切。", "",
+            "selected_versions.json 和 markers.csv 记录 24 fps 的总轨入/出点、源片入/出点、完整源片余量和续写父版本。",
+            "工程时间零点与原曲一致，无前置空白；视频轨音量为零，最终声音只使用原曲。", "",
         ]
         if kind == "movie":
             notes += ["MV_无字成片.mp4 是直接交付版，字幕未烧入，请按需导入 最终字幕.srt。"]
             progress("准备无字成片", .24)
             _render_movie(snapshot, staging, cancel, progress, ffmpeg)
         else:
-            notes += ["请先完整解压 ZIP，不要只单独取出 XML。",
-                      "工程文件：FCP7_通用工程.xml（FCP7 xmeml 交换格式）。",
-                      "素材路径全部相对于 XML 所在目录，指向 media/；原始视频完整保留，未预裁切。",
-                      "Premiere 与剪映请从软件的“导入 PR/FCP 工程”入口选择 XML；不要把包复制到剪映草稿目录。",
-                      "不同软件/版本的 FCP7 XML 导入行为仍需实机验收；若软件要求重新链接素材，请指向解压后的 media 文件夹。",
+            assert portable_project is not None
+            notes += ["请先完整解压 ZIP，保留工程文件与 media 文件夹的相对位置。",
+                      "工程文件：FCP7_通用工程.xml（FCP7 xmeml）和 MV_Edit.prproj（Premiere 原生工程）。",
+                      "素材路径全部相对于 XML 所在目录，指向 media/；原始视频完整保留，但工程时间线已按选中版本的入/出帧预剪，可在 Premiere 中拉长片段找回余量。",
+                      "实切与续写按所选版本和帧点接好；叠化的后段在上轨按重合帧淡入。",
+                      "本机导出目录内的 MV_Edit.prproj 可直接由 Premiere 或剪映打开。",
+                      "如果使用解压后的 ZIP 或搬动了工程文件夹，请先运行 Relink_MV_Project.cmd，按当前位置更新工程素材路径；脚本会保留修改前的 .bak 备份。",
+                      "Premiere 不会自动解析 .prproj 中的 RelativePath，因此只搬动工程文件而不重定位会提示素材丢失。",
+                      "请勿把本包复制进剪映草稿目录；在剪映中使用 PR 工程导入入口选择 MV_Edit.prproj。",
+                      "FCP7 XML 可从 Premiere 的“导入”入口选择；若软件要求重新链接素材，请指向解压后的 media 文件夹。",
                       "新版 Final Cut Pro 的 FCPXML 与 FCP7 xmeml 并非同一格式，不能保证直接导入。",
-                      "精确切点另见 markers.csv；XML 含序列标记。"]
+                      "精确切点另见 markers.csv；两个工程都含序列标记。"]
             xml = fcp7_xml(snapshot)
             _validate_xml_media(xml, staging)
             (staging / "FCP7_通用工程.xml").write_bytes(xml)
+            (staging / "MV_Edit.prproj").write_bytes(portable_project)
+            asset_dir = Path(__file__).parent / "assets"
+            for filename in ("relink_premiere.ps1", "Relink_MV_Project.cmd"):
+                _copy_file(asset_dir / filename, staging / filename, cancel)
         (staging / "导出说明.txt").write_text("\n".join(notes) + "\n", encoding="utf-8")
         _check_cancel(cancel)
         progress("正在封装 ZIP", .93)
         _zip_package(staging, archive_partial, cancel, progress)
         _check_cancel(cancel)
+        if kind == "fcp_xml":
+            # The ZIP keeps a movable project plus relinker. The local output
+            # folder gets a directly openable project for this known location.
+            (staging / "MV_Edit.prproj").write_bytes(
+                premiere_project_bytes(snapshot, final.resolve()))
         os.replace(staging, final)
         os.replace(archive_partial, archive)
         progress("导出完成", 1.0)

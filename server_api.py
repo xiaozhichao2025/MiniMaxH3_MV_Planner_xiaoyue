@@ -35,6 +35,7 @@ from .project_store import list_projects as store_list_projects
 from .project_store import load_project, load_project_plan, update_project_audio_role, upsert_project
 from .generation_store import (
     begin_version, completed_batch_parent_selections, generation_job_conflict, load_versions,
+    mark_independent_edit_allowed,
     recover_interrupted_versions, resolve_parent_version,
     select_version, select_versions, update_version, with_stale_flags,
 )
@@ -44,7 +45,7 @@ from .delivery_export import (
     srt_to_webvtt,
 )
 from .preview_desk import (
-    build_preview_manifest, final_subtitles, selection_chain,
+    build_preview_manifest, selection_chain,
     subtitle_csv, subtitle_srt,
 )
 from .editor_draft_store import (
@@ -1064,6 +1065,13 @@ async def _run_shot_generation_job(job_id: str, data: dict[str, Any]) -> None:
                for item in plan["generation_windows"] if isinstance(item, dict)}
     shots = {str(item.get("id") or ""): item for item in plan["shots"]
              if isinstance(item, dict)}
+    incoming_by_shot_id = {
+        str(shot.get("id") or ""): (
+            str(plan["transitions"][index - 1].get("type") or "hard_cut")
+            if index and index - 1 < len(plan.get("transitions") or [])
+            else "hard_cut")
+        for index, shot in enumerate(plan["shots"])
+    }
     label_to_shot_id = {
         str(window.get("editorial_label") or ""): shot_id
         for shot_id, window in windows.items()
@@ -1133,7 +1141,8 @@ async def _run_shot_generation_job(job_id: str, data: dict[str, Any]) -> None:
                         timeline_in_frame=int(window["delivery_timeline_range"][0]),
                         timeline_out_frame_exclusive=int(window["delivery_timeline_range"][1]),
                         seed=actual_seed,
-                        parent_version_id=parent_id)
+                        parent_version_id=parent_id,
+                        incoming_transition=incoming_by_shot_id[shot_id])
                     job["current_version_id"] = version["id"]
                     audio_name = await asyncio.to_thread(
                         prepare_window_audio, project, window, version["id"])
@@ -1239,6 +1248,9 @@ async def export_shot_cut_list(request: web.Request) -> web.Response:
         plan = await asyncio.to_thread(load_project_plan, project_id)
         if not plan:
             raise ValueError("项目尚无已编译镜头计划。")
+        await asyncio.to_thread(
+            mark_independent_edit_allowed, project_id,
+            plan.get("shots") or [], plan.get("transitions") or [])
         state = with_stale_flags(
             await asyncio.to_thread(load_versions, project_id),
             _shot_window_fingerprints(plan))
@@ -1267,6 +1279,9 @@ async def get_mv_preview_desk(request: web.Request) -> web.Response:
         _require_current_window_rule(plan)
         if plan.get("needs_compile"):
             raise ValueError("镜头计划已有未编译改动；请先运行主 MV 工作台更新切点。")
+        await asyncio.to_thread(
+            mark_independent_edit_allowed, project_id,
+            plan.get("shots") or [], plan.get("transitions") or [])
         state = with_stale_flags(
             await asyncio.to_thread(load_versions, project_id),
             _shot_window_fingerprints(plan))
@@ -1296,6 +1311,9 @@ async def select_mv_preview_version(request: web.Request) -> web.Response:
                 str(shot.get("shot_uid") or f"legacy_{shot.get('id')}")
                 for shot in plan.get("shots") or []}:
             raise ValueError("这个镜头已不在当前工程中。")
+        await asyncio.to_thread(
+            mark_independent_edit_allowed, project_id,
+            plan.get("shots") or [], plan.get("transitions") or [])
         state = await asyncio.to_thread(load_versions, project_id)
         fingerprints = _shot_window_fingerprints(plan)
         selections = selection_chain(state, shot_uid, version_id, plan)
@@ -1328,7 +1346,15 @@ async def export_mv_final_subtitles(request: web.Request) -> web.Response:
         plan = await asyncio.to_thread(load_project_plan, project_id)
         if not plan or str((plan.get("project") or {}).get("id") or "") != project_id:
             raise ValueError("工程缺少可用的最终字幕计划。")
-        rows = final_subtitles(plan)
+        project = await asyncio.to_thread(load_project, project_id)
+        await asyncio.to_thread(
+            mark_independent_edit_allowed, project_id,
+            plan.get("shots") or [], plan.get("transitions") or [])
+        state = await asyncio.to_thread(load_versions, project_id)
+        manifest = await asyncio.to_thread(
+            build_preview_manifest, plan, state, project,
+            Path(folder_paths.get_output_directory()))
+        rows = manifest["subtitles"]
         filename = f"{project_id}_final_subtitles.{output_format}"
         headers = {"Content-Disposition": f'attachment; filename="{filename}"'}
         if output_format == "json":
@@ -1339,7 +1365,7 @@ async def export_mv_final_subtitles(request: web.Request) -> web.Response:
             else body.encode("utf-8"),
             content_type="text/plain" if output_format == "srt" else "text/csv",
             charset="utf-8", headers=headers)
-    except (KeyError, TypeError, ValueError) as exc:
+    except (KeyError, TypeError, ValueError, OSError) as exc:
         return web.json_response({"error": str(exc)}, status=400)
 
 
@@ -1392,7 +1418,7 @@ async def start_mv_delivery_export(request: web.Request) -> web.Response:
         project_id = str(data.get("project_id") or "")
         kind = str(data.get("kind") or "")
         if kind not in EXPORT_KINDS:
-            raise ValueError("请选择无字成片或 FCP XML 通用工程包；若仍看到旧按钮，请刷新页面。")
+            raise ValueError("请选择无字成片或 FCP7 XML + PR 工程包；若仍看到旧按钮，请刷新页面。")
         if any(item["project_id"] == project_id and item["state"] == "running"
                for item in _DELIVERY_EXPORT_JOBS.values()):
             raise ValueError("这个工程已有导出任务在运行；请先等待或取消。")
@@ -1404,6 +1430,9 @@ async def start_mv_delivery_export(request: web.Request) -> web.Response:
         if plan.get("needs_compile"):
             raise ValueError("镜头计划有未编译改动，请先更新切点。")
         output_root = Path(folder_paths.get_output_directory())
+        await asyncio.to_thread(
+            mark_independent_edit_allowed, project_id,
+            plan.get("shots") or [], plan.get("transitions") or [])
         state = with_stale_flags(
             await asyncio.to_thread(load_versions, project_id),
             _shot_window_fingerprints(plan))
@@ -1574,6 +1603,9 @@ async def start_shot_generations(request: web.Request) -> web.Response:
         if plan.get("needs_compile"):
             raise ValueError("镜头计划尚未编译；请先保存并运行 MV 项目工作台节点。")
         _require_current_window_rule(plan)
+        await asyncio.to_thread(
+            mark_independent_edit_allowed, project_id,
+            plan.get("shots") or [], plan.get("transitions") or [])
         if str((plan.get("audio") or {}).get("fingerprint") or "") != str(
                 (project["manifest"].get("audio") or {}).get("fingerprint") or ""):
             raise ValueError("镜头计划与当前项目母带不一致；请先重新运行规划节点。")
@@ -1696,6 +1728,9 @@ async def select_shot_generation(request: web.Request) -> web.Response:
                      if isinstance(item, dict) and item.get("id") == shot_id), None)
         if shot is None:
             raise ValueError("当前计划中找不到该镜头；不能选择已删除镜头的版本。")
+        await asyncio.to_thread(
+            mark_independent_edit_allowed, project_id,
+            plan.get("shots") or [], plan.get("transitions") or [])
         state = await asyncio.to_thread(
             select_version, project_id, _stable_shot_id(shot),
             str(data.get("version_id") or ""))
@@ -1717,6 +1752,9 @@ async def preflight_shot_generation(request: web.Request) -> web.Response:
         if (plan.get("project") or {}).get("id") != project_id:
             raise ValueError("镜头计划与项目不匹配。")
         _require_current_window_rule(plan)
+        await asyncio.to_thread(
+            mark_independent_edit_allowed, project_id,
+            plan.get("shots") or [], plan.get("transitions") or [])
         shot = next((item for item in plan.get("shots", [])
                      if item.get("id") == shot_id), None)
         windows = [item for item in plan.get("generation_windows", [])

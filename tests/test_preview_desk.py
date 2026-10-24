@@ -74,6 +74,197 @@ class PreviewDeskTests(unittest.TestCase):
                        "frame_count": 150},
         }
 
+    def test_legacy_video_uses_matching_recorded_cut_after_current_cut_changes(self):
+        plan = self.plan()
+        plan["shots"] = plan["shots"][:1]
+        plan["generation_windows"] = plan["generation_windows"][:1]
+        plan["transitions"] = []
+        legacy = self.version("uid_1", start=0, version_id="legacy")
+        recorded = self.version("uid_1", start=0, version_id="recorded")
+        for version in (legacy, recorded):
+            version.update(window_id="window_0001", deliver_frames=80,
+                           raw_frames=150, deliver_from_raw_frame=22)
+        legacy.update(timeline_in_frame=None, timeline_out_frame_exclusive=None)
+        recorded.update(number=2, timeline_in_frame=5,
+                        timeline_out_frame_exclusive=85)
+        state = {"shots": {"uid_1": {
+            "selected_version_id": recorded["id"],
+            "selection_confirmed": True,
+            "versions": [legacy, recorded],
+        }}}
+        payload = preview_desk.build_preview_manifest(
+            plan, state, self.project, self.output_root)
+        shot = payload["shots"][0]
+        self.assertEqual([v["number"] for v in shot["versions"]], [1, 2])
+        self.assertTrue(shot["versions"][0]["playable"])
+        self.assertEqual((shot["versions"][0]["timeline_in_frame"],
+                          shot["versions"][0]["timeline_out_frame_exclusive"]), (5, 85))
+        self.assertTrue(shot["versions"][0]["timeline_points_inferred"])
+        self.assertTrue(shot["selected_playable"])
+
+    def test_old_continuation_can_cut_with_another_parent_or_resume_original_pair(self):
+        plan = self.plan()
+        plan["shots"] = plan["shots"][:2]
+        plan["generation_windows"] = plan["generation_windows"][:2]
+        plan["transitions"] = [{"type": "hard_cut"}]
+        parent_v1 = self.version("uid_1", start=0, version_id="parent_v1")
+        parent_v2 = self.version("uid_1", start=0, version_id="parent_v2")
+        parent_v2["number"] = 2
+        child = self.version("uid_2", parent=parent_v1["id"],
+                             start=100, version_id="child_v1")
+        state = {"shots": {
+            "uid_1": {"selected_version_id": parent_v2["id"],
+                      "versions": [parent_v1, parent_v2]},
+            "uid_2": {"selected_version_id": child["id"],
+                      "versions": [child]},
+        }}
+        cut_branch = preview_desk.build_preview_manifest(
+            plan, state, self.project, self.output_root)
+        self.assertTrue(cut_branch["shots"][1]["selected_playable"])
+        self.assertEqual(cut_branch["shots"][1]["incoming_transition"], "hard_cut")
+        self.assertEqual([shot["selected_label"] for shot in cut_branch["shots"]],
+                         ["01", "02"])
+        selections = preview_desk.selection_chain(state, "uid_2", child["id"], plan)
+        self.assertEqual(selections, {"uid_2": child["id"]})
+        state["shots"]["uid_1"]["selected_version_id"] = parent_v1["id"]
+        branch = preview_desk.build_preview_manifest(
+            plan, state, self.project, self.output_root)
+        self.assertTrue(branch["shots"][1]["selected_playable"])
+        self.assertEqual(branch["shots"][1]["incoming_transition"], "long_take")
+        self.assertEqual(branch["shots"][1]["track"], branch["shots"][0]["track"] + 1)
+        self.assertEqual([shot["selected_label"] for shot in branch["shots"]],
+                         ["01_a", "01_b"])
+
+        plan["transitions"][0]["type"] = "long_take"
+        state["shots"]["uid_1"]["selected_version_id"] = parent_v2["id"]
+        strict = preview_desk.build_preview_manifest(
+            plan, state, self.project, self.output_root)
+        self.assertFalse(strict["shots"][1]["selected_playable"])
+        self.assertEqual(preview_desk.selection_chain(
+            state, "uid_2", child["id"], plan),
+            {"uid_2": child["id"], "uid_1": parent_v1["id"]})
+
+        child["independent_edit_allowed"] = True  # This v1 passed through a cut.
+        unlocked = preview_desk.build_preview_manifest(
+            plan, state, self.project, self.output_root)
+        self.assertTrue(unlocked["shots"][1]["selected_playable"])
+        self.assertEqual(unlocked["shots"][1]["incoming_transition"], "hard_cut")
+        self.assertEqual(preview_desk.selection_chain(
+            state, "uid_2", child["id"], plan), {"uid_2": child["id"]})
+
+        new_child = self.version("uid_2", parent=parent_v2["id"],
+                                 start=100, version_id="child_v2")
+        new_child["number"] = 2
+        state["shots"]["uid_2"]["versions"].append(new_child)
+        state["shots"]["uid_2"]["selected_version_id"] = new_child["id"]
+        state["shots"]["uid_1"]["selected_version_id"] = parent_v1["id"]
+        strict_new = preview_desk.build_preview_manifest(
+            plan, state, self.project, self.output_root)
+        self.assertFalse(strict_new["shots"][1]["selected_playable"])
+        self.assertEqual(preview_desk.selection_chain(
+            state, "uid_2", new_child["id"], plan),
+            {"uid_2": new_child["id"], "uid_1": parent_v2["id"]})
+
+    def test_all_three_and_four_part_disconnect_and_reconnect_combinations(self):
+        # v1 chain existed before the edit. Any seam in cut_mask was then
+        # disconnected; v2 chain was made only after every seam was rejoined.
+        # Enumerate every cut set and every mixed v1/v2 selection, including
+        # disconnections at either end and in the middle of a four-part chain.
+        for length in (3, 4):
+            plan = self.plan()
+            plan["shots"] = plan["shots"][:length]
+            plan["generation_windows"] = plan["generation_windows"][:length]
+            plan["transitions"] = [{"type": "long_take"} for _ in range(length - 1)]
+            versions = {}
+            for index in range(length):
+                uid = f"uid_{index + 1}"
+                versions[uid] = {}
+                for variant in (1, 2):
+                    parent = (versions[f"uid_{index}"][variant]["id"]
+                              if index else "")
+                    item = self.version(
+                        uid, parent=parent, start=index * 100,
+                        version_id=f"chain{length}_{uid}_v{variant}")
+                    item["number"] = variant
+                    versions[uid][variant] = item
+
+            for cut_mask in range(1 << (length - 1)):
+                for index in range(1, length):
+                    versions[f"uid_{index + 1}"][1]["independent_edit_allowed"] = bool(
+                        cut_mask & (1 << (index - 1)))
+                for choice_mask in range(1 << length):
+                    choices = [2 if choice_mask & (1 << index) else 1
+                               for index in range(length)]
+                    state = {"shots": {
+                        uid: {"selected_version_id": versions[uid][choices[index]]["id"],
+                              "selection_confirmed": True,
+                              "versions": list(versions[uid].values())}
+                        for index, uid in enumerate(versions)
+                    }}
+                    manifest = preview_desk.build_preview_manifest(
+                        plan, state, self.project, self.output_root)
+                    expected_playable = True
+                    for index, shot in enumerate(manifest["shots"]):
+                        if index:
+                            parent_matches = choices[index] == choices[index - 1]
+                            unlocked = (choices[index] == 1 and bool(
+                                cut_mask & (1 << (index - 1))))
+                            expected_mode = ("hard_cut" if unlocked and not parent_matches
+                                             else "long_take")
+                            expected_playable = (expected_playable and parent_matches
+                                                 if expected_mode == "long_take" else True)
+                            self.assertEqual(shot["incoming_transition"], expected_mode,
+                                             (length, cut_mask, choices, index))
+                        self.assertEqual(shot["selected_playable"], expected_playable,
+                                         (length, cut_mask, choices, index))
+
+                last_uid = f"uid_{length}"
+                expected_ancestors = {}
+                for index in range(length - 1, -1, -1):
+                    uid = f"uid_{index + 1}"
+                    expected_ancestors[uid] = versions[uid][1]["id"]
+                    if index and cut_mask & (1 << (index - 1)):
+                        break
+                self.assertEqual(preview_desk.selection_chain(
+                    state, last_uid, versions[last_uid][1]["id"], plan),
+                    expected_ancestors)
+                self.assertEqual(preview_desk.selection_chain(
+                    state, last_uid, versions[last_uid][2]["id"], plan),
+                    {f"uid_{index + 1}": versions[f"uid_{index + 1}"][2]["id"]
+                     for index in range(length)})
+
+    def test_regenerated_child_stays_strict_when_parent_is_regenerated_later(self):
+        plan = self.plan()
+        plan["shots"] = plan["shots"][:2]
+        plan["generation_windows"] = plan["generation_windows"][:2]
+        plan["transitions"] = [{"type": "long_take"}]
+        a1 = self.version("uid_1", start=0, version_id="order_a1")
+        b1 = self.version("uid_2", parent=a1["id"], start=100,
+                          version_id="order_b1")
+        b1["independent_edit_allowed"] = True  # Existing when seam broke.
+        b2 = self.version("uid_2", parent=a1["id"], start=100,
+                          version_id="order_b2")  # Rejoined, then B generated.
+        b2["number"] = 2
+        a2 = self.version("uid_1", start=0, version_id="order_a2")
+        a2["number"] = 2  # A generated only after B2.
+        state = {"shots": {
+            "uid_1": {"selected_version_id": a2["id"],
+                      "versions": [a1, a2]},
+            "uid_2": {"selected_version_id": b1["id"],
+                      "versions": [b1, b2]},
+        }}
+        manifest = preview_desk.build_preview_manifest(
+            plan, state, self.project, self.output_root)
+        self.assertTrue(manifest["shots"][1]["selected_playable"])
+        self.assertEqual(manifest["shots"][1]["incoming_transition"], "hard_cut")
+        state["shots"]["uid_2"]["selected_version_id"] = b2["id"]
+        manifest = preview_desk.build_preview_manifest(
+            plan, state, self.project, self.output_root)
+        self.assertFalse(manifest["shots"][1]["selected_playable"])
+        self.assertEqual(preview_desk.selection_chain(
+            state, "uid_2", b2["id"], plan),
+            {"uid_2": b2["id"], "uid_1": a1["id"]})
+
     def test_tracks_version_points_and_trimmed_source(self):
         plan = self.plan()
         state = {"shots": {}}
@@ -217,6 +408,197 @@ class PreviewDeskTests(unittest.TestCase):
         self.assertFalse(payload["shots"][4]["selected_playable"])
         self.assertEqual(preview_desk.selection_chain(state, "uid_5", b["id"], plan),
                          {"uid_5": b["id"], "uid_4": a["id"]})
+
+    def test_historical_virtual_and_real_versions_survive_current_mode_change(self):
+        plan = self.plan()
+        plan["transitions"][3]["type"] = "hard_cut"  # 05_a -> 05_b changed to real cut.
+        a = self.version("uid_4", start=300, version_id="a_virtual")
+        virtual_b = self.version("uid_5", start=400, parent=a["id"],
+                                 version_id="b_virtual")
+        virtual_b.update(editorial_label="05_b", incoming_transition="long_take")
+        real_b = self.version("uid_5", start=400, version_id="b_real")
+        real_b.update(editorial_label="06", incoming_transition="hard_cut", number=2)
+        state = {"shots": {
+            "uid_4": {"selected_version_id": a["id"], "versions": [a]},
+            "uid_5": {"selected_version_id": virtual_b["id"],
+                      "versions": [virtual_b, real_b]},
+        }}
+        self.assertEqual(preview_desk.selection_chain(state, "uid_5", virtual_b["id"], plan),
+                         {"uid_5": virtual_b["id"]})
+        self.assertEqual(preview_desk.selection_chain(state, "uid_5", real_b["id"], plan),
+                         {"uid_5": real_b["id"]})
+        payload = preview_desk.build_preview_manifest(
+            plan, state, self.project, self.output_root)
+        self.assertTrue(payload["shots"][4]["selected_playable"])
+        self.assertEqual(payload["shots"][4]["incoming_transition"], "long_take")
+        self.assertEqual(payload["shots"][4]["parent_shot_uid"], "uid_4")
+        self.assertEqual(payload["shots"][4]["selected_label"], "04_b")
+        state["shots"]["uid_5"]["selected_version_id"] = real_b["id"]
+        plan["transitions"][3]["type"] = "long_take"  # Current mode reverses again.
+        payload = preview_desk.build_preview_manifest(
+            plan, state, self.project, self.output_root)
+        self.assertTrue(payload["shots"][4]["selected_playable"])
+        self.assertEqual(payload["shots"][4]["incoming_transition"], "hard_cut")
+        self.assertEqual(payload["shots"][4]["selected_label"], "05_a")
+
+    def test_historical_crossfade_uses_recorded_mode_not_current_mode(self):
+        plan = self.plan()
+        a = self.version("uid_1", start=0, version_id="a")
+        a["deliver_frames"] = 110
+        a["timeline_out_frame_exclusive"] = 110
+        b = self.version("uid_2", start=90, version_id="b")
+        b.update(incoming_transition="crossfade", editorial_label="02_old")
+        state = {"shots": {
+            "uid_1": {"selected_version_id": a["id"], "versions": [a]},
+            "uid_2": {"selected_version_id": b["id"], "versions": [b]},
+        }}
+        payload = preview_desk.build_preview_manifest(
+            plan, state, self.project, self.output_root)
+        self.assertTrue(payload["shots"][1]["selected_playable"])
+        self.assertEqual(payload["shots"][1]["incoming_transition"], "crossfade")
+        self.assertGreater(payload["shots"][1]["track"], payload["shots"][0]["track"])
+        self.assertEqual(payload["shots"][1]["selected_label"], "02")
+
+    def test_old_continuations_and_new_cut_or_crossfade_stay_selectable(self):
+        plan = self.plan()
+        plan["transitions"][3]["type"] = "hard_cut"
+        plan["transitions"][4]["type"] = "hard_cut"
+        parent = self.version("uid_4", start=300, version_id="parent_v1")
+        continuation_v1 = self.version(
+            "uid_5", start=400, parent=parent["id"], version_id="child_v1")
+        continuation_v2 = self.version(
+            "uid_5", start=400, parent=parent["id"], version_id="child_v2")
+        cut_v3 = self.version("uid_5", start=400, version_id="child_v3")
+        fade_v4 = self.version("uid_5", start=390, version_id="child_v4")
+        for number, version, mode in (
+            (1, continuation_v1, "long_take"),
+            (2, continuation_v2, "long_take"),
+            (3, cut_v3, "hard_cut"),
+            (4, fade_v4, "crossfade"),
+        ):
+            version.update(number=number, incoming_transition=mode)
+        fade_v4.update(deliver_frames=110, timeline_out_frame_exclusive=500)
+        state = {"shots": {
+            "uid_4": {"selected_version_id": parent["id"], "versions": [parent]},
+            "uid_5": {"selected_version_id": cut_v3["id"],
+                      "versions": [continuation_v1, continuation_v2,
+                                   cut_v3, fade_v4]},
+        }}
+        for version in (continuation_v1, continuation_v2):
+            chain = preview_desk.selection_chain(state, "uid_5", version["id"], plan)
+            self.assertEqual(chain, {"uid_5": version["id"]})
+            state["shots"]["uid_5"]["selected_version_id"] = version["id"]
+            payload = preview_desk.build_preview_manifest(
+                plan, state, self.project, self.output_root)
+            self.assertTrue(payload["shots"][4]["selected_playable"])
+            self.assertEqual(payload["shots"][3]["selected_label"], "04_a")
+            self.assertEqual(payload["shots"][4]["selected_label"], "04_b")
+
+        for version, mode in ((cut_v3, "hard_cut"), (fade_v4, "crossfade")):
+            self.assertEqual(preview_desk.selection_chain(
+                state, "uid_5", version["id"], plan), {"uid_5": version["id"]})
+            state["shots"]["uid_5"]["selected_version_id"] = version["id"]
+            plan["transitions"][3]["type"] = (
+                "crossfade" if mode == "hard_cut" else "long_take")
+            payload = preview_desk.build_preview_manifest(
+                plan, state, self.project, self.output_root)
+            self.assertTrue(payload["shots"][4]["selected_playable"])
+            self.assertEqual(payload["shots"][4]["incoming_transition"], mode)
+            self.assertEqual(payload["shots"][3]["selected_label"], "04")
+            self.assertEqual(payload["shots"][4]["selected_label"], "05")
+
+    def test_current_branch_renumbers_downstream_without_rewriting_history(self):
+        plan = self.plan()
+        plan["shots"] = plan["shots"][:5]
+        plan["generation_windows"] = plan["generation_windows"][:5]
+        plan["transitions"] = [{"type": kind} for kind in
+                               ("hard_cut", "long_take", "hard_cut", "hard_cut")]
+        a = self.version("uid_2", start=100, version_id="a_v1")
+        b_virtual = self.version("uid_3", start=200, parent=a["id"],
+                                 version_id="b_virtual")
+        b_virtual.update(editorial_label="02_b", incoming_transition="long_take")
+        b_real = self.version("uid_3", start=200, version_id="b_real")
+        b_real.update(number=2, editorial_label="03", incoming_transition="hard_cut")
+        downstream = []
+        for uid, label, start in (("uid_4", "03", 300), ("uid_5", "04", 400)):
+            version = self.version(uid, start=start)
+            version.update(editorial_label=label, incoming_transition="hard_cut")
+            downstream.append(version)
+        state = {"shots": {
+            "uid_2": {"selected_version_id": a["id"], "versions": [a]},
+            "uid_3": {"selected_version_id": b_virtual["id"],
+                      "versions": [b_virtual, b_real]},
+            **{uid: {"selected_version_id": version["id"], "versions": [version]}
+               for uid, version in zip(("uid_4", "uid_5"), downstream)},
+        }}
+        virtual = preview_desk.build_preview_manifest(
+            plan, state, self.project, self.output_root)
+        self.assertEqual([shot["selected_label"] for shot in virtual["shots"]],
+                         ["01", "02_a", "02_b", "03", "04"])
+
+        state["shots"]["uid_3"]["selected_version_id"] = b_real["id"]
+        real = preview_desk.build_preview_manifest(
+            plan, state, self.project, self.output_root)
+        self.assertEqual([shot["selected_label"] for shot in real["shots"]],
+                         ["01", "02", "03", "04", "05"])
+        self.assertEqual([shot["selected_version_id"] for shot in real["shots"][3:]],
+                         [version["id"] for version in downstream])
+        self.assertEqual([shot["versions"][0]["editorial_label"]
+                          for shot in real["shots"][3:]], ["03", "04"])
+        self.assertEqual([cue["shot"] for cue in real["subtitles"]],
+                         ["01", "02", "03", "04", "05"])
+
+        plan["shots"].pop(1)
+        plan["generation_windows"].pop(1)
+        plan["transitions"] = [{"type": "hard_cut"}] * 3
+        deleted = preview_desk.build_preview_manifest(
+            plan, state, self.project, self.output_root)
+        self.assertEqual([shot["selected_label"] for shot in deleted["shots"]],
+                         ["01", "02", "03", "04"])
+        self.assertEqual([shot["selected_version_id"] for shot in deleted["shots"][2:]],
+                         [version["id"] for version in downstream])
+
+    def test_visible_continuation_suffix_passes_z(self):
+        shots = [{"incoming_transition": "hard_cut"}]
+        shots += [{"incoming_transition": "long_take"} for _ in range(27)]
+        preview_desk._assign_visible_labels(shots)
+        self.assertEqual(shots[0]["selected_label"], "01_a")
+        self.assertEqual(shots[25]["selected_label"], "01_z")
+        self.assertEqual(shots[26]["selected_label"], "01_aa")
+
+    def test_legacy_virtual_parent_is_recovered_without_current_virtual_mode(self):
+        plan = self.plan()
+        plan["transitions"][3]["type"] = "hard_cut"
+        a = self.version("uid_4", start=300)
+        b = self.version("uid_5", start=400, parent=a["id"])
+        state = {"shots": {
+            "uid_4": {"selected_version_id": a["id"], "versions": [a]},
+            "uid_5": {"selected_version_id": b["id"], "versions": [b]},
+        }}
+        payload = preview_desk.build_preview_manifest(
+            plan, state, self.project, self.output_root)
+        self.assertTrue(payload["shots"][4]["selected_playable"])
+        self.assertEqual(payload["shots"][4]["incoming_transition"], "long_take")
+        self.assertFalse(payload["shots"][4]["versions"][0]["transition_recorded"])
+
+    def test_inserted_current_shot_does_not_reparent_old_continuation(self):
+        plan = self.plan()
+        a = self.version("uid_3", start=200, version_id="a")
+        b = self.version("uid_5", start=400, parent=a["id"], version_id="b")
+        b["incoming_transition"] = "long_take"
+        b["independent_edit_allowed"] = True  # Insertion disconnected the old seam.
+        state = {"shots": {
+            "uid_3": {"selected_version_id": a["id"], "versions": [a]},
+            "uid_5": {"selected_version_id": b["id"], "versions": [b]},
+        }}
+        self.assertEqual(preview_desk.selection_chain(state, "uid_5", b["id"], plan),
+                         {"uid_5": b["id"]})
+        payload = preview_desk.build_preview_manifest(
+            plan, state, self.project, self.output_root)
+        self.assertEqual(payload["shots"][4]["parent_shot_uid"], "")
+        self.assertEqual(payload["shots"][4]["incoming_transition"], "hard_cut")
+        self.assertTrue(payload["shots"][4]["selected_playable"])
+        self.assertNotEqual(payload["shots"][4]["track"], payload["shots"][3]["track"])
 
 
 if __name__ == "__main__":

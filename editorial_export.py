@@ -41,6 +41,13 @@ def build_cut_list(plan: dict[str, Any], state: dict[str, Any],
     master_path = _contained_file(Path(project["paths"]["input"]), str(source))
     project_outputs = (Path(project["paths"]["output"]) / "generations").resolve()
     result = []
+    selected_by_uid: dict[str, str] = {}
+    owner_by_version_id = {
+        str(item.get("id")): uid
+        for uid, record in (state.get("shots") or {}).items()
+        for item in record.get("versions", [])
+        if item.get("id")
+    }
     for index, shot in enumerate(shots):
         shot_id = str(shot.get("id") or "")
         window = window_by_shot.get(shot_id)
@@ -56,9 +63,9 @@ def build_cut_list(plan: dict[str, Any], state: dict[str, Any],
         selected_id = record.get("selected_version_id")
         version = next((item for item in record.get("versions", [])
                         if item.get("id") == selected_id), None)
-        if (not version or version.get("status") != "completed"
-                or version.get("stale")):
-            raise ValueError(f"镜头 {shot.get('editorial_label') or shot_id} 尚无当前规划可用的最终版本。")
+        if not version or version.get("status") != "completed":
+            raise ValueError(f"镜头 {shot.get('editorial_label') or shot_id} 尚无可用的最终版本。")
+        parent_id = str(version.get("parent_version_id") or "")
         descriptor = version.get("output") or {}
         filename = str(descriptor.get("filename") or "")
         subfolder = str(descriptor.get("subfolder") or "").replace("\\", "/")
@@ -66,39 +73,34 @@ def build_cut_list(plan: dict[str, Any], state: dict[str, Any],
             raise ValueError(f"镜头 {shot_id} 的输出文件记录无效。")
         source_path = _contained_file(output_root, str(Path(subfolder) / filename))
         source_path.relative_to(project_outputs)
-        deliver = int(window["deliver_frames"])
-        lead = int(window["deliver_from_raw_frame"])
-        raw = int(window["raw_frames"])
-        if (deliver <= 0 or lead < 0 or lead + deliver > raw
-                or int(version.get("deliver_frames") or 0) != deliver):
-            raise ValueError(f"镜头 {shot_id} 的裁切帧范围与当前规划不一致。")
+        deliver = int(version.get("deliver_frames") or window["deliver_frames"])
+        lead = int(version.get("deliver_from_raw_frame") or 0)
+        raw = int(version.get("raw_frames") or window["raw_frames"])
+        if deliver <= 0 or lead < 0 or lead + deliver > raw:
+            raise ValueError(f"镜头 {shot_id} 的历史版本裁切帧范围无效。")
         frame_space = version.get("frame_space") or "delivery"
         if frame_space == "raw":
-            if (int(version.get("raw_frames") or 0) != raw
-                    or int(version.get("deliver_from_raw_frame", -1)) != lead):
-                raise ValueError(f"镜头 {shot_id} 的原始窗口与当前规划不一致。")
             source_in = lead
         elif frame_space == "delivery":
             source_in = 0  # Versions created before raw-window preservation.
         else:
             raise ValueError(f"镜头 {shot_id} 的视频帧坐标类型无效。")
         timeline = window.get("delivery_timeline_range") or []
-        if (len(timeline) != 2 or int(timeline[1]) - int(timeline[0]) != deliver):
-            raise ValueError(f"镜头 {shot_id} 的时间线范围无效。")
         version_timeline_in = version.get("timeline_in_frame")
         version_timeline_out = version.get("timeline_out_frame_exclusive")
         if version_timeline_in is None or version_timeline_out is None:
             # Existing versions predate per-version absolute timeline markers.
+            if len(timeline) != 2 or int(timeline[1]) - int(timeline[0]) != deliver:
+                raise ValueError(f"镜头 {shot_id} 的旧版本缺少可恢复的时间线范围。")
             version_timeline_in, version_timeline_out = timeline
         version_timeline_in = int(version_timeline_in)
         version_timeline_out = int(version_timeline_out)
         if (version_timeline_in < 0 or
                 version_timeline_out - version_timeline_in != deliver):
             raise ValueError(f"镜头 {shot_id} 的版本总轨记录点无效。")
-        transitions = plan.get("transitions") or []
-        transition = transitions[index] if index < len(transitions) else {}
         result.append({
-            "shot": str(window.get("editorial_label") or shot.get("editorial_label") or shot_id),
+            "shot": str(version.get("editorial_label") or window.get("editorial_label")
+                        or shot.get("editorial_label") or shot_id),
             "shot_id": shot_id,
             "shot_uid": shot_uid,
             "version": int(version.get("number") or 0),
@@ -109,11 +111,33 @@ def build_cut_list(plan: dict[str, Any], state: dict[str, Any],
             "timeline_in_frame": version_timeline_in,
             "timeline_out_frame_exclusive": version_timeline_out,
             "fps": FPS,
-            "transition_to_next": str(transition.get("type") or "")
-                if isinstance(transition, dict) else "",
+            "transition_to_next": "",
             "master_audio_file": str(master_path),
             "audio_policy": "mute_shot_audio_use_full_master",
         })
+        selected_by_uid[shot_uid] = str(version["id"])
+        if index:
+            recorded = str(version.get("incoming_transition") or "")
+            if recorded not in {"hard_cut", "long_take", "crossfade"}:
+                recorded = ("long_take" if version.get("parent_version_id") else
+                            "crossfade" if version_timeline_in < int(shot.get("start_frame") or 0)
+                            else "hard_cut")
+            transitions = plan.get("transitions") or []
+            current_transition = (
+                str((transitions[index - 1] or {}).get("type") or "hard_cut")
+                if index - 1 < len(transitions) else "hard_cut")
+            original_parent_selected = bool(
+                parent_id and owner_by_version_id.get(parent_id, "") ==
+                result[-2]["shot_uid"] and
+                selected_by_uid.get(owner_by_version_id.get(parent_id, ""))
+                == parent_id)
+            if parent_id and not original_parent_selected:
+                if (current_transition == "long_take"
+                        and not version.get("independent_edit_allowed")):
+                    raise ValueError(
+                        f"镜头 {shot.get('editorial_label') or shot_id} 的续写父版本链不匹配。")
+                recorded = "hard_cut"
+            result[-2]["transition_to_next"] = recorded
     return {
         "schema": "xiaoyue.mv.editorial-cut-list.v1",
         "project_id": str((plan.get("project") or {}).get("id") or ""),

@@ -72,6 +72,62 @@ def load_versions(project_id: str, roots: dict[str, Path] | None = None) -> dict
         return _read(_manifest_path(project_id, roots), project_id)
 
 
+def mark_independent_edit_allowed(project_id: str,
+                                  shots: list[dict[str, Any]],
+                                  transitions: list[dict[str, Any]],
+                                  roots: dict[str, Path] | None = None) -> int:
+    """Remember that existing continuations passed through a disconnected edit.
+
+    New continuations made after the seam is reconnected stay strict until a
+    later cut/crossfade checkpoint explicitly unlocks those versions too.
+    """
+    if len(shots) < 2:
+        return 0
+    project_id = normalize_project_id(project_id)
+    with _LOCK:
+        path = _manifest_path(project_id, roots)
+        if not path.is_file():
+            return 0
+        state = _read(path, project_id)
+        owner_by_version_id = {
+            str(version.get("id")): str(uid)
+            for uid, record in (state.get("shots") or {}).items()
+            for version in record.get("versions", [])
+            if version.get("id")
+        }
+        changed = 0
+        for index, shot in enumerate(shots):
+            if index == 0 or not isinstance(shot, dict):
+                continue
+            uid = str(shot.get("shot_uid") or f"legacy_{shot.get('id')}")
+            previous = shots[index - 1]
+            previous_uid = (str(previous.get("shot_uid") or f"legacy_{previous.get('id')}")
+                            if isinstance(previous, dict) else "")
+            transition = (transitions[index - 1]
+                          if index - 1 < len(transitions) else {})
+            disconnected = (not isinstance(transition, dict)
+                            or transition.get("type") != "long_take")
+            record = (state.get("shots") or {}).get(uid) or {}
+            for version in record.get("versions", []):
+                parent_id = str(version.get("parent_version_id") or "")
+                if (parent_id and not version.get("independent_edit_allowed")
+                        and (disconnected or
+                             owner_by_version_id.get(parent_id) != previous_uid)):
+                    version["independent_edit_allowed"] = True
+                    changed += 1
+        if changed:
+            _write(path, state)
+        return changed
+
+
+def _last_published_number(shot: dict[str, Any]) -> int:
+    """Never reuse a published number, including one explicitly removed later."""
+    return max(int(shot.get("last_published_number") or 0),
+               max((int(version.get("number") or 0)
+                    for version in shot.get("versions", [])
+                    if version.get("status") == "completed"), default=0))
+
+
 def require_confirmed_selection(state: dict[str, Any], shot_id: str,
                                 label: str) -> None:
     """A default first version is not a user's choice once alternatives exist."""
@@ -207,7 +263,10 @@ def with_stale_flags(state: dict[str, Any],
         if matching is not None and version.get("window_fingerprint") != matching:
             return True
         parent = str(version.get("parent_version_id") or "")
-        if not parent:
+        # A disconnected seam is a historical edit boundary.  Its old
+        # generation parent remains provenance, not a current dependency.
+        # Descendants may still depend on this clip by their own strict seam.
+        if not parent or version.get("independent_edit_allowed"):
             return False
         if parent in seen or parent not in selected:
             return True
@@ -230,10 +289,17 @@ def begin_version(project_id: str, shot_id: str, *, editorial_label: str,
                   seed: int | None = None,
                   workflow_fingerprint: str = "",
                   parent_version_id: str = "",
+                  incoming_transition: str | None = None,
                   roots: dict[str, Path] | None = None) -> dict[str, Any]:
     project_id = normalize_project_id(project_id)
     if not shot_id or not window_id:
         raise ValueError("镜头或生成窗口 ID 为空。")
+    if incoming_transition is None:
+        incoming_transition = "long_take" if parent_version_id else "hard_cut"
+    if incoming_transition not in {"hard_cut", "long_take", "crossfade"}:
+        raise ValueError("镜头版本的接法无效。")
+    if bool(parent_version_id) != (incoming_transition == "long_take"):
+        raise ValueError("镜头版本的续写接法与父版本不一致。")
     if ((timeline_in_frame is None) != (timeline_out_frame_exclusive is None)
             or (timeline_in_frame is not None and (
                 int(timeline_in_frame) < 0 or
@@ -250,12 +316,12 @@ def begin_version(project_id: str, shot_id: str, *, editorial_label: str,
         # A failed/cancelled run is an attempt, not a published video version.
         # Legacy rows used number for both; retain their published numbers and
         # use the old value as the attempt sequence when migrating in place.
-        attempt_number = max((int(version.get("attempt_number")
-                                  or version.get("number") or 0)
-                              for version in shot["versions"]), default=0) + 1
-        pending_number = max((int(version.get("number") or 0)
-                              for version in shot["versions"]
-                              if version.get("status") == "completed"), default=0) + 1
+        attempt_number = max(
+            int(shot.get("last_attempt_number") or 0),
+            max((int(version.get("attempt_number") or version.get("number") or 0)
+                 for version in shot["versions"]), default=0)) + 1
+        shot["last_attempt_number"] = attempt_number
+        pending_number = _last_published_number(shot) + 1
         version = {
             "id": uuid.uuid4().hex,
             "attempt_number": attempt_number,
@@ -280,6 +346,7 @@ def begin_version(project_id: str, shot_id: str, *, editorial_label: str,
             "fingerprint_revision": 2,
             "workflow_fingerprint": workflow_fingerprint,
             "parent_version_id": parent_version_id,
+            "incoming_transition": incoming_transition,
             "status": "queued",
             "created_at": time.time(),
             "output": None,
@@ -318,9 +385,9 @@ def update_version(project_id: str, shot_id: str, version_id: str, *,
             if not isinstance(output, dict) or not output.get("filename"):
                 raise ValueError("完成的镜头版本必须有可预览视频。")
             version["number"] = int(version.get("pending_number") or 0) or (
-                max((int(item.get("number") or 0) for item in shot["versions"]
-                     if item.get("status") == "completed" and item is not version),
-                    default=0) + 1)
+                _last_published_number(shot) + 1)
+            shot["last_published_number"] = max(
+                _last_published_number(shot), version["number"])
             version["output"] = output
             if not shot.get("selected_version_id"):
                 shot["selected_version_id"] = version_id
@@ -361,10 +428,9 @@ def recover_misclassified_output(project_id: str, shot_id: str,
         if not version.get("number"):
             # A later attempt may already have claimed the originally pending
             # number. Recovery publishes the next unused success number.
-            version["number"] = max(
-                (int(item.get("number") or 0) for item in shot["versions"]
-                 if item.get("status") == "completed" and item is not version),
-                default=0) + 1
+            version["number"] = _last_published_number(shot) + 1
+        shot["last_published_number"] = max(
+            _last_published_number(shot), int(version["number"]))
         version["output"] = output
         version["error"] = ""
         version["recovered_at"] = time.time()

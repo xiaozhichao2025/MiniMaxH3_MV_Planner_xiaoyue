@@ -123,6 +123,8 @@
 .xp-track-name { position: sticky; z-index: 6; left: 0; display: inline-flex; align-items: center; justify-content: center; width: var(--xp-track-gutter, 54px); height: 100%; border-right: 1px solid #3b515c; color: #a9c0c9; background: #0b141c; font: 11px/1 ui-monospace, Consolas, monospace; font-variant-numeric: tabular-nums; cursor: default; }
 .xp-clip { position: absolute; top: 5px; height: 32px; min-height: 0 !important; overflow: hidden; padding: 0 6px !important; border-color: #5797a9 !important; border-radius: 5px !important; color: #ebf8fa !important; background: #245569 !important; white-space: nowrap; text-overflow: ellipsis; text-align: left; font-size: 11px !important; cursor: pointer; }
 .xp-clip:hover { background: #32758a !important; }
+.xp-clip.is-crossfade { background: linear-gradient(90deg, #163841, #245569 32%) !important; }
+.xp-clip.is-crossfade:hover { background: linear-gradient(90deg, #1b4b57, #32758a 32%) !important; }
 .xp-clip.is-missing { border-style: dashed !important; border-color: #62737a !important; color: #b0bdc1 !important; background: #26343a !important; }
 .xp-clip.is-stale { border-color: #d6a36c !important; background: #654833 !important; }
 .xp-playhead { position: absolute; z-index: 5; top: 0; bottom: 0; width: 14px; transform: translateX(-50%); cursor: ew-resize; touch-action: none; }

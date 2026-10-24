@@ -75,6 +75,169 @@ class ShotGenerationStoreTests(unittest.TestCase):
                          state["shots"]["uid_survivor"]["versions"]])
         self.assertIn("uid_deleted", state["shots"])
 
+    def test_deleted_video_record_does_not_reuse_its_number(self):
+        shot_uid = "uid_black_video"
+        for number in (1, 2):
+            pending = versions.begin_version(
+                self.project_id, shot_uid, editorial_label="02",
+                window_id="window_0002", prompt_fingerprint="prompt",
+                window_fingerprint="cut", deliver_frames=100, roots=self.roots)
+            published = versions.update_version(
+                self.project_id, shot_uid, pending["id"], status="completed",
+                output={"filename": f"v{number}.mp4"}, roots=self.roots)
+            self.assertEqual(published["number"], number)
+        path = versions._manifest_path(self.project_id, self.roots)
+        state = versions.load_versions(self.project_id, self.roots)
+        record = state["shots"][shot_uid]
+        record["last_published_number"] = 2
+        record["last_attempt_number"] = 2
+        record["versions"].pop()
+        record["selected_version_id"] = record["versions"][0]["id"]
+        record["selection_confirmed"] = True
+        versions._write(path, state)
+
+        visible = versions.with_stale_flags(versions.load_versions(
+            self.project_id, self.roots))
+        self.assertEqual([v["number"] for v in visible["shots"][shot_uid]["versions"]], [1])
+        self.assertEqual(visible["shots"][shot_uid]["selected_version_id"],
+                         record["versions"][0]["id"])
+        versions.require_confirmed_selection(visible, shot_uid, "02")
+
+        next_attempt = versions.begin_version(
+            self.project_id, shot_uid, editorial_label="02",
+            window_id="window_0002", prompt_fingerprint="prompt",
+            window_fingerprint="cut", deliver_frames=100, roots=self.roots)
+        self.assertEqual(next_attempt["pending_number"], 3)
+        self.assertEqual(next_attempt["attempt_number"], 3)
+        published = versions.update_version(
+            self.project_id, shot_uid, next_attempt["id"], status="completed",
+            output={"filename": "v3.mp4"}, roots=self.roots)
+        self.assertEqual(published["number"], 3)
+        self.assertEqual(versions.load_versions(self.project_id, self.roots)
+                         ["shots"][shot_uid]["last_published_number"], 3)
+
+    def test_cut_unlocks_only_versions_that_already_existed(self):
+        parent = versions.begin_version(
+            self.project_id, "uid_a", editorial_label="01_a",
+            window_id="window_a", prompt_fingerprint="a",
+            window_fingerprint="plan", deliver_frames=100, roots=self.roots)
+        versions.update_version(
+            self.project_id, "uid_a", parent["id"], status="completed",
+            output={"filename": "parent.mp4"}, roots=self.roots)
+
+        def child_version(name):
+            version = versions.begin_version(
+                self.project_id, "uid_b", editorial_label="01_b",
+                window_id="window_b", prompt_fingerprint=name,
+                window_fingerprint="plan", deliver_frames=100,
+                parent_version_id=parent["id"],
+                incoming_transition="long_take", roots=self.roots)
+            versions.update_version(
+                self.project_id, "uid_b", version["id"], status="completed",
+                output={"filename": f"{name}.mp4"}, roots=self.roots)
+            return version["id"]
+
+        old_id = child_version("old")
+        shots = [{"shot_uid": "uid_a"}, {"shot_uid": "uid_b"}]
+        self.assertEqual(versions.mark_independent_edit_allowed(
+            self.project_id, shots, [{"type": "hard_cut"}], self.roots), 1)
+        self.assertEqual(versions.mark_independent_edit_allowed(
+            self.project_id, shots, [{"type": "hard_cut"}], self.roots), 0)
+        new_id = child_version("new")  # Made after the seam was reconnected.
+        self.assertEqual(versions.mark_independent_edit_allowed(
+            self.project_id, shots, [{"type": "long_take"}], self.roots), 0)
+        rows = versions.load_versions(self.project_id, self.roots)["shots"]["uid_b"]["versions"]
+        self.assertTrue(next(row for row in rows if row["id"] == old_id)
+                        ["independent_edit_allowed"])
+        self.assertFalse(next(row for row in rows if row["id"] == new_id)
+                         .get("independent_edit_allowed", False))
+        self.assertEqual(versions.mark_independent_edit_allowed(
+            self.project_id, shots, [{"type": "crossfade"}], self.roots), 1)
+        self.assertTrue(next(row for row in versions.load_versions(
+            self.project_id, self.roots)["shots"]["uid_b"]["versions"]
+                             if row["id"] == new_id)["independent_edit_allowed"])
+
+    def test_all_three_and_four_part_cut_sets_preserve_independent_ancestry(self):
+        def complete(uid, parent_id="", name="v1"):
+            item = versions.begin_version(
+                self.project_id, uid, editorial_label=uid,
+                window_id=f"window_{uid}", prompt_fingerprint=name,
+                window_fingerprint=f"cut_{uid}", deliver_frames=100,
+                parent_version_id=parent_id, roots=self.roots)
+            return versions.update_version(
+                self.project_id, uid, item["id"], status="completed",
+                output={"filename": f"{uid}_{name}.mp4"}, roots=self.roots)
+
+        for length in (3, 4):
+            # Separate projects would be unnecessary here: each case uses
+            # distinct stable shot UIDs in the same temporary manifest.
+            for cut_mask in range(1 << (length - 1)):
+                prefix = f"case_{length}_{cut_mask}"
+                uids = [f"{prefix}_{index}" for index in range(length)]
+                original = []
+                for index, uid in enumerate(uids):
+                    original.append(complete(
+                        uid, original[-1]["id"] if index else ""))
+                shots = [{"shot_uid": uid} for uid in uids]
+                cut_transitions = [
+                    {"type": "hard_cut" if cut_mask & (1 << index)
+                     else "long_take"}
+                    for index in range(length - 1)]
+                versions.mark_independent_edit_allowed(
+                    self.project_id, shots, cut_transitions, self.roots)
+                versions.mark_independent_edit_allowed(
+                    self.project_id, shots,
+                    [{"type": "long_take"} for _ in cut_transitions], self.roots)
+
+                # Generate a new root *after* the cuts, with the old descendants
+                # still selected. Each later strict seam must propagate staleness
+                # only until the first independently editable old version.
+                fresh_root = complete(uids[0], name="v2")
+                versions.select_version(
+                    self.project_id, uids[0], fresh_root["id"], self.roots)
+                state = versions.with_stale_flags(
+                    versions.load_versions(self.project_id, self.roots),
+                    {uid: f"cut_{uid}" for uid in uids})
+                stale_expected = False
+                for index, uid in enumerate(uids):
+                    selected = next(row for row in state["shots"][uid]["versions"]
+                                    if row["id"] == state["shots"][uid]["selected_version_id"])
+                    if index:
+                        stale_expected = (False if cut_mask & (1 << (index - 1))
+                                          else stale_expected or index == 1)
+                        self.assertEqual(bool(selected.get("independent_edit_allowed")),
+                                         bool(cut_mask & (1 << (index - 1))))
+                    self.assertEqual(selected["stale"], stale_expected,
+                                     (length, cut_mask, index))
+                    if index and not stale_expected:
+                        self.assertEqual(versions.resolve_parent_version(
+                            state, uid, uid)["id"], selected["id"])
+
+    def test_inserting_predecessor_unlocks_old_nonadjacent_parent(self):
+        a = versions.begin_version(
+            self.project_id, "uid_a", editorial_label="01_a",
+            window_id="wa", prompt_fingerprint="a", window_fingerprint="a",
+            deliver_frames=100, roots=self.roots)
+        versions.update_version(self.project_id, "uid_a", a["id"],
+                                status="completed", output={"filename": "a.mp4"},
+                                roots=self.roots)
+        b = versions.begin_version(
+            self.project_id, "uid_b", editorial_label="01_b",
+            window_id="wb", prompt_fingerprint="b", window_fingerprint="b",
+            deliver_frames=100, parent_version_id=a["id"], roots=self.roots)
+        versions.update_version(self.project_id, "uid_b", b["id"],
+                                status="completed", output={"filename": "b.mp4"},
+                                roots=self.roots)
+        changed = versions.mark_independent_edit_allowed(
+            self.project_id,
+            [{"shot_uid": "uid_a"}, {"shot_uid": "uid_inserted"},
+             {"shot_uid": "uid_b"}],
+            [{"type": "long_take"}, {"type": "long_take"}], self.roots)
+        self.assertEqual(changed, 1)
+        record = versions.load_versions(self.project_id, self.roots)
+        self.assertTrue(record["shots"]["uid_b"]["versions"][0]
+                        ["independent_edit_allowed"])
+
     def test_fingerprint_ignores_visual_number_but_tracks_parent_identity(self):
         window = {"shot_id": "shot_003", "source_start_frame": 100,
                   "source_end_frame": 222, "raw_frames": 122,
@@ -192,12 +355,32 @@ class ShotGenerationStoreTests(unittest.TestCase):
                          (145, 270))
         state = versions.load_versions(self.project_id, self.roots)
         self.assertEqual(state["shots"]["shot_005"]["versions"][0]["timeline_in_frame"], 144)
+        self.assertEqual(state["shots"]["shot_005"]["versions"][0]["incoming_transition"],
+                         "hard_cut")
         with self.assertRaisesRegex(ValueError, "总轨记录点"):
             versions.begin_version(
                 self.project_id, "shot_006", editorial_label="06",
                 window_id="window_0006", prompt_fingerprint="x",
                 window_fingerprint="plan", deliver_frames=125,
                 timeline_in_frame=145, timeline_out_frame_exclusive=269,
+                roots=self.roots)
+
+    def test_each_version_snapshots_its_generation_connection(self):
+        blend = versions.begin_version(
+            self.project_id, "shot_007", editorial_label="07",
+            window_id="window_0007", prompt_fingerprint="a",
+            window_fingerprint="blend-plan", deliver_frames=100,
+            incoming_transition="crossfade", roots=self.roots)
+        self.assertEqual(blend["incoming_transition"], "crossfade")
+        self.assertEqual(versions.load_versions(self.project_id, self.roots)
+                         ["shots"]["shot_007"]["versions"][0]
+                         ["incoming_transition"], "crossfade")
+        with self.assertRaisesRegex(ValueError, "续写接法与父版本"):
+            versions.begin_version(
+                self.project_id, "shot_008", editorial_label="08",
+                window_id="window_0008", prompt_fingerprint="b",
+                window_fingerprint="plan", deliver_frames=100,
+                parent_version_id=blend["id"], incoming_transition="hard_cut",
                 roots=self.roots)
 
     def test_failed_cancelled_and_interrupted_attempts_do_not_consume_video_number(self):
@@ -990,10 +1173,26 @@ class EditorialExportTests(unittest.TestCase):
                               for row in payload["shots"]], [(11, 215), (0, 204)])
             self.assertEqual([(row["timeline_in_frame"], row["timeline_out_frame_exclusive"])
                               for row in payload["shots"]], [(12, 216), (204, 408)])
-            self.assertIn("long_take", editorial_export.cut_list_csv(payload))
+            self.assertEqual(payload["shots"][0]["transition_to_next"], "hard_cut")
             state["shots"]["uid_b"]["versions"][0]["stale"] = True
-            with self.assertRaisesRegex(ValueError, "最终版本"):
+            historical = editorial_export.build_cut_list(plan, state, root / "output", project)
+            self.assertEqual(historical["shots"][1]["timeline_in_frame"], 204)
+            state["shots"]["uid_b"]["versions"][0].update(
+                editorial_label="01_b", incoming_transition="hard_cut",
+                deliver_frames=180, timeline_in_frame=220,
+                timeline_out_frame_exclusive=400)
+            historical = editorial_export.build_cut_list(plan, state, root / "output", project)
+            self.assertEqual(historical["shots"][0]["transition_to_next"], "hard_cut")
+            self.assertEqual(historical["shots"][1]["shot"], "01_b")
+            self.assertEqual(historical["shots"][1]["source_out_frame_exclusive"], 180)
+            self.assertEqual(historical["shots"][1]["timeline_in_frame"], 220)
+            state["shots"]["uid_b"]["versions"][0]["parent_version_id"] = "missing"
+            with self.assertRaisesRegex(ValueError, "父版本链不匹配"):
                 editorial_export.build_cut_list(plan, state, root / "output", project)
+            state["shots"]["uid_b"]["versions"][0]["independent_edit_allowed"] = True
+            unlocked = editorial_export.build_cut_list(
+                plan, state, root / "output", project)
+            self.assertEqual(unlocked["shots"][0]["transition_to_next"], "hard_cut")
 
 
 if __name__ == "__main__":

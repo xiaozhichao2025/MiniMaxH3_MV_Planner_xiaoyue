@@ -34,14 +34,16 @@ These are screenshots from an actual project; the music and visual assets shown 
 
 - **Project setup** stores aspect ratio, first/second-pass MP targets, the original track, optional time-aligned vocals, lyrics/subtitles, and shared assets. Project data lives under ComfyUI's `input/xiaoyue_mv_projects/`, outside this repository.
 - **MV workbench** plans shots around the soundtrack and lets you adjust hard cuts, continuations, and dissolves on a 24 fps absolute-frame timeline while calculating `17N+5` generation windows and bleed. Correct lyrics, bind per-shot assets, generate the overall visual outline and individual H3 prompts, then generate selected shots in order. Each successful take keeps its own frame points, seed, and continuation-parent relationship.
-- **Final review desk** selects a take for each shot and previews the assembled MV using the original soundtrack; individual generated clips are muted. Export either a caption-free movie plus SRT or an FCP7 XML package with full source clips, relative media paths, and edit markers. The XML targets Premiere's FCP7 XML importer. Jianying/CapCut compatibility depends on its version and import path; the XML is not a native Jianying draft.
+- **Final review desk** selects a take for each shot and previews the assembled MV using the original soundtrack; individual generated clips are muted. Export either a caption-free movie plus SRT, or one package containing FCP7 XML, a native Premiere `.prproj`, full source files, the soundtrack, subtitles, and edit markers. The timeline is pre-trimmed to the selected hard cuts and continuations, with upper-track opacity fades for dissolves; full media remains available when extending an edit. Jianying can import the packaged `.prproj` through its Premiere-project import route without a Premiere conversion step.
 
 ## From soundtrack to deliverable
 
 1. **Set up the project:** import the original song, lyrics/subtitles, and character or scene assets; choose aspect ratio and pass sizes.
 2. **Plan the shots:** place cuts and connections on an absolute-frame, 24 fps timeline. The workbench calculates `17N+5` generation lengths plus guide/bleed frames; the overall outline and per-shot prompts use the same plan.
 3. **Generate and select:** run shots through your own graph. Successful takes retain their seed, original frame points, and continuation-parent take; failures do not masquerade as usable versions.
-4. **Review and deliver:** select takes on a multitrack timeline, preview them with the original song and subtitles, then export a caption-free movie plus SRT or an FCP7 XML package with full source clips and edit markers.
+4. **Review and deliver:** select takes on a multitrack timeline, preview them with the original song and subtitles, then export a caption-free movie plus SRT or an FCP7 XML + PR project package with a pre-edited hard-cut, continuation, and dissolve timeline, full source files, and edit markers.
+
+`MV_Edit.prproj` in the local export folder can be opened directly in Premiere or through Jianying's Premiere-project import route. If you download the ZIP, unpack it, or move the folder, keep `MV_Edit.prproj` next to `media/` and run the packaged `Relink_MV_Project.cmd` first. This updates media paths for the new location and retains a `.bak` backup: the Premiere version tested here does not automatically resolve moved media from `.prproj` relative paths alone. `FCP7_通用工程.xml` retains relative references for applications supporting FCP7 xmeml; it is not modern Final Cut Pro FCPXML or a Jianying draft. Native PR export currently requires stereo source-video audio and a stereo soundtrack; other audio layouts have not been verified.
 
 ## Installation and dependencies
 

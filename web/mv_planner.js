@@ -3573,6 +3573,7 @@ class PlannerEditor {
             }
             this.setDirty();
             this.renderAll();
+            this.persistTimelineCheckpoint();
         });
         for (const [name, key] of [
             ["context-frames", "context_frames"],
