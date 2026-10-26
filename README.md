@@ -1,6 +1,6 @@
 # MiniMax H3 MV 工作台
 
-[English](README_EN.md) · [使用教程](https://www.bilibili.com/video/BV1EEnX6YEFm/) · [更新记录](CHANGELOG.md) · [特别感谢](#特别感谢)
+[English](README_EN.md) · [使用教程](#样例工作流在哪里) · [更新记录](CHANGELOG.md) · [特别感谢](#特别感谢)
 
 **让 MiniMax H3 的 `17N+5` 生成帧数，与 MV 的 24 fps 音乐切点对齐。** 这是做这个工作台的初衷：MV 要跟着节拍和唱词精确切镜，H3 的生成帧数又必须符合 `17N+5`。两套尺度并存，手工计算容易偏位；生成时需要留给模型的引导帧与出血区，也让后期很难从完整素材里找到真正的剪辑点。
 
@@ -14,7 +14,9 @@
 
 ## 样例工作流在哪里
 
-仓库提供**一个可编辑的样例工作流**：[MiniMax H3 MV 工作台样例 JSON](workflows/MiniMaxH3_MV_Planner_xiaoyue_MV工作台v1.0.json)。安装插件后，文件位于 `ComfyUI/custom_nodes/MiniMaxH3_MV_Planner_xiaoyue/workflows/MiniMaxH3_MV_Planner_xiaoyue_MV工作台v1.0.json`。把这个 JSON 拖入 ComfyUI 画布，或通过「加载工作流」选择它；若提示缺少节点，按下方依赖清单安装并重启 ComfyUI。工作台负责规划与驱动，后面的 H3 生成链只是可替换的接线示例。[B 站使用教程](https://www.bilibili.com/video/BV1EEnX6YEFm/)可帮助你从安装开始上手。
+仓库提供**一个可编辑的样例工作流**：[MiniMax H3 MV 工作台样例 JSON](workflows/MiniMaxH3_MV_Planner_xiaoyue_MV工作台v1.0.json)。安装插件后，文件位于 `ComfyUI/custom_nodes/MiniMaxH3_MV_Planner_xiaoyue/workflows/MiniMaxH3_MV_Planner_xiaoyue_MV工作台v1.0.json`。把这个 JSON 拖入 ComfyUI 画布，或通过「加载工作流」选择它；若提示缺少节点，按下方依赖清单安装并重启 ComfyUI。工作台负责规划与驱动，后面的 H3 生成链只是可替换的接线示例。
+
+使用教程：[B 站](https://www.bilibili.com/video/BV1EEnX6YEFm/) · [YouTube](https://youtu.be/DhGjpkrX0Gg)。
 
 ## 三个工作台
 

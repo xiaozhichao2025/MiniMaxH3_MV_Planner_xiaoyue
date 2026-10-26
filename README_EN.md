@@ -1,6 +1,6 @@
 # MiniMax H3 MV Workbench
 
-[简体中文](README.md) · [Video tutorial (Chinese)](https://www.bilibili.com/video/BV1EEnX6YEFm/) · [Changelog](CHANGELOG.md) · [Acknowledgements](#acknowledgements)
+[简体中文](README.md) · [Video tutorials](#where-to-find-the-example-workflow) · [Changelog](CHANGELOG.md) · [Acknowledgements](#acknowledgements)
 
 **Align MiniMax H3's `17N+5` generation-frame rule with a music video's 24 fps edit points.** That is why this workbench exists. An MV needs cuts placed precisely against beats and lyrics, while H3 requires valid generation lengths. Calculating both by hand can shift a shot off its intended cut. Guide frames and extra generated frames (“bleed”) also make the true in/out points hard to find later in full-length source clips.
 
@@ -14,7 +14,9 @@ Current plugin version: **v0.1.0 preview**. The `v1.0` in the example workflow f
 
 ## Where to find the example workflow
 
-The repository contains **one editable example workflow**: [MiniMax H3 MV Workbench JSON](workflows/MiniMaxH3_MV_Planner_xiaoyue_MV工作台v1.0.json). After installation, it is at `ComfyUI/custom_nodes/MiniMaxH3_MV_Planner_xiaoyue/workflows/MiniMaxH3_MV_Planner_xiaoyue_MV工作台v1.0.json`. Drag the JSON onto the ComfyUI canvas or open it with “Load Workflow.” If ComfyUI reports missing nodes, install them from the dependency list below and restart. The workbench plans and drives the project; the downstream H3 graph is a replaceable wiring example. A [Bilibili video tutorial (Chinese)](https://www.bilibili.com/video/BV1EEnX6YEFm/) walks through setup and use.
+The repository contains **one editable example workflow**: [MiniMax H3 MV Workbench JSON](workflows/MiniMaxH3_MV_Planner_xiaoyue_MV工作台v1.0.json). After installation, it is at `ComfyUI/custom_nodes/MiniMaxH3_MV_Planner_xiaoyue/workflows/MiniMaxH3_MV_Planner_xiaoyue_MV工作台v1.0.json`. Drag the JSON onto the ComfyUI canvas or open it with “Load Workflow.” If ComfyUI reports missing nodes, install them from the dependency list below and restart. The workbench plans and drives the project; the downstream H3 graph is a replaceable wiring example.
+
+Video tutorials (Chinese): [Bilibili](https://www.bilibili.com/video/BV1EEnX6YEFm/) · [YouTube](https://youtu.be/DhGjpkrX0Gg).
 
 ## Three work areas
 
