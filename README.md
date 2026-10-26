@@ -1,6 +1,6 @@
 # MiniMax H3 MV 工作台
 
-[English](README_EN.md) · [更新记录](CHANGELOG.md) · [特别感谢](#特别感谢)
+[English](README_EN.md) · [使用教程](https://www.bilibili.com/video/BV1EEnX6YEFm/) · [更新记录](CHANGELOG.md) · [特别感谢](#特别感谢)
 
 **让 MiniMax H3 的 `17N+5` 生成帧数，与 MV 的 24 fps 音乐切点对齐。** 这是做这个工作台的初衷：MV 要跟着节拍和唱词精确切镜，H3 的生成帧数又必须符合 `17N+5`。两套尺度并存，手工计算容易偏位；生成时需要留给模型的引导帧与出血区，也让后期很难从完整素材里找到真正的剪辑点。
 
@@ -10,11 +10,11 @@
 
 工作台负责**规划、组织和驱动**，通过可见连线输出每镜参数；模型、采样、LoRA、放大和保存节点仍由你在下游工作流中选择、接线和调整。仓库只提供插件、两个默认 Skill 和一个可编辑的 MiniMax H3 样例工作流，**不包含模型、歌曲或成片素材**。
 
-当前插件版本：**v0.1.0 私有预览版**。样例工作流文件名中的 `v1.0` 是工作流模板修订号，不等于插件版本。
+当前插件版本：**v0.1.0 预览版**。样例工作流文件名中的 `v1.0` 是工作流模板修订号，不等于插件版本。
 
 ## 样例工作流在哪里
 
-仓库提供**一个可编辑的样例工作流**：[MiniMax H3 MV 工作台样例 JSON](workflows/MiniMaxH3_MV_Planner_xiaoyue_MV工作台v1.0.json)。安装插件后，文件位于 `ComfyUI/custom_nodes/MiniMaxH3_MV_Planner_xiaoyue/workflows/MiniMaxH3_MV_Planner_xiaoyue_MV工作台v1.0.json`。把这个 JSON 拖入 ComfyUI 画布，或通过「加载工作流」选择它；若提示缺少节点，按下方依赖清单安装并重启 ComfyUI。工作台负责规划与驱动，后面的 H3 生成链只是可替换的接线示例。
+仓库提供**一个可编辑的样例工作流**：[MiniMax H3 MV 工作台样例 JSON](workflows/MiniMaxH3_MV_Planner_xiaoyue_MV工作台v1.0.json)。安装插件后，文件位于 `ComfyUI/custom_nodes/MiniMaxH3_MV_Planner_xiaoyue/workflows/MiniMaxH3_MV_Planner_xiaoyue_MV工作台v1.0.json`。把这个 JSON 拖入 ComfyUI 画布，或通过「加载工作流」选择它；若提示缺少节点，按下方依赖清单安装并重启 ComfyUI。工作台负责规划与驱动，后面的 H3 生成链只是可替换的接线示例。[B 站使用教程](https://www.bilibili.com/video/BV1EEnX6YEFm/)可帮助你从安装开始上手。
 
 ## 三个工作台
 
@@ -47,7 +47,7 @@
 
 ## 安装与依赖
 
-1. 在 `ComfyUI/custom_nodes/` 克隆本仓库，目录名保持 `MiniMaxH3_MV_Planner_xiaoyue`。私有仓库克隆需要先完成 GitHub 身份验证。
+1. 在 `ComfyUI/custom_nodes/` 克隆[本仓库](https://github.com/xiaozhichao2025/MiniMaxH3_MV_Planner_xiaoyue)，目录名保持 `MiniMaxH3_MV_Planner_xiaoyue`。
 2. 按下方[扩展节点](#样例工作流使用的扩展节点)、[模型目录](#样例工作流选用的模型)和 [LoRA](#样例工作流选用的-lora) 清单，安装你要运行的部分。核心规划节点与样例 H3 生成链是两层：只使用项目规划功能时，无须为了样例骨干安装全部生成模型。
 3. 重启 ComfyUI，打开[上面的样例工作流](workflows/MiniMaxH3_MV_Planner_xiaoyue_MV工作台v1.0.json)。先在主节点点 **① 新建／打开项目**，导入原曲并保存；运行一次工作流，使当前项目的规划 UI 完成注册；再按 **② MV 工作台 → ③ 最终验收剪辑台** 的顺序操作。
 

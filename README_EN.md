@@ -1,6 +1,6 @@
 # MiniMax H3 MV Workbench
 
-[简体中文](README.md) · [Changelog](CHANGELOG.md) · [Acknowledgements](#acknowledgements)
+[简体中文](README.md) · [Video tutorial (Chinese)](https://www.bilibili.com/video/BV1EEnX6YEFm/) · [Changelog](CHANGELOG.md) · [Acknowledgements](#acknowledgements)
 
 **Align MiniMax H3's `17N+5` generation-frame rule with a music video's 24 fps edit points.** That is why this workbench exists. An MV needs cuts placed precisely against beats and lyrics, while H3 requires valid generation lengths. Calculating both by hand can shift a shot off its intended cut. Guide frames and extra generated frames (“bleed”) also make the true in/out points hard to find later in full-length source clips.
 
@@ -10,11 +10,11 @@ For long takes, **continuation shots** derive guide frames from a selected paren
 
 The workbench **plans, organizes, and drives** each shot through visible output ports. You still choose and wire the downstream model, sampler, LoRAs, upscaler, and save node. This repository contains the plugin, two bundled Skills, and one editable MiniMax H3 example workflow; it contains **no models, songs, or generated footage**.
 
-Current plugin version: **v0.1.0 private preview**. The `v1.0` in the example workflow filename is that template's revision, not the plugin version.
+Current plugin version: **v0.1.0 preview**. The `v1.0` in the example workflow filename is that template's revision, not the plugin version.
 
 ## Where to find the example workflow
 
-The repository contains **one editable example workflow**: [MiniMax H3 MV Workbench JSON](workflows/MiniMaxH3_MV_Planner_xiaoyue_MV工作台v1.0.json). After installation, it is at `ComfyUI/custom_nodes/MiniMaxH3_MV_Planner_xiaoyue/workflows/MiniMaxH3_MV_Planner_xiaoyue_MV工作台v1.0.json`. Drag the JSON onto the ComfyUI canvas or open it with “Load Workflow.” If ComfyUI reports missing nodes, install them from the dependency list below and restart. The workbench plans and drives the project; the downstream H3 graph is a replaceable wiring example.
+The repository contains **one editable example workflow**: [MiniMax H3 MV Workbench JSON](workflows/MiniMaxH3_MV_Planner_xiaoyue_MV工作台v1.0.json). After installation, it is at `ComfyUI/custom_nodes/MiniMaxH3_MV_Planner_xiaoyue/workflows/MiniMaxH3_MV_Planner_xiaoyue_MV工作台v1.0.json`. Drag the JSON onto the ComfyUI canvas or open it with “Load Workflow.” If ComfyUI reports missing nodes, install them from the dependency list below and restart. The workbench plans and drives the project; the downstream H3 graph is a replaceable wiring example. A [Bilibili video tutorial (Chinese)](https://www.bilibili.com/video/BV1EEnX6YEFm/) walks through setup and use.
 
 ## Three work areas
 
@@ -47,7 +47,7 @@ These are screenshots from an actual project; the music and visual assets shown 
 
 ## Installation and dependencies
 
-1. Clone this repository into `ComfyUI/custom_nodes/MiniMaxH3_MV_Planner_xiaoyue`. Cloning the private repository requires GitHub authentication.
+1. Clone [this repository](https://github.com/xiaozhichao2025/MiniMaxH3_MV_Planner_xiaoyue) into `ComfyUI/custom_nodes/MiniMaxH3_MV_Planner_xiaoyue`.
 2. Install the parts you intend to run using the [custom-node](#custom-nodes-used-by-the-example-workflow), [model](#models-selected-in-the-example-workflow), and [LoRA](#loras-selected-in-the-example-workflow) lists below. The planner and the sample H3 generation graph are separate layers: planning alone does not require every model used by the sample graph.
 3. Restart ComfyUI and load the [example workflow](workflows/MiniMaxH3_MV_Planner_xiaoyue_MV工作台v1.0.json). In the main node, select **① New/open project**, import the original track and save. Run the workflow once to register the current project's planning UI, then use **② MV workbench → ③ Final review desk**.
 
