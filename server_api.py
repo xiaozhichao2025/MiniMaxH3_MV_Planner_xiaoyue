@@ -32,7 +32,9 @@ from .h3_prompt import (
 from .project_audio import describe_audio, source_extension
 from .planner_core import CONTINUATION_WINDOW_RULE_REVISION
 from .project_store import list_projects as store_list_projects
-from .project_store import load_project, load_project_plan, update_project_audio_role, upsert_project
+from .project_store import (
+    delete_project, load_project, load_project_plan, update_project_audio_role, upsert_project,
+)
 from .generation_store import (
     begin_version, completed_batch_parent_selections, generation_job_conflict, load_versions,
     mark_independent_edit_allowed,
@@ -152,6 +154,39 @@ async def get_mv_project(request: web.Request) -> web.Response:
     except Exception:
         logging.exception("Xiaoyue project read failed")
         return web.json_response({"error": "读取 MV 项目失败。"}, status=500)
+
+
+@PromptServer.instance.routes.post("/xiaoyue-mv/projects/{project_id}/delete")
+async def delete_mv_project(request: web.Request) -> web.Response:
+    project_id = request.match_info["project_id"]
+    active_states = {"queued", "running"}
+    try:
+        # The outline job is globally exclusive and predates per-project job
+        # metadata, so conservatively protect every project while it is active.
+        if any(job.get("state") in active_states for job in _OUTLINE_JOBS.values()):
+            return web.json_response({
+                "error": "整片镜头纲领仍在生成；请等待完成后再删除项目。",
+            }, status=409)
+        for jobs, label in (
+            (_H3_PROMPT_JOBS, "H3 提示词"),
+            (_SHOT_GENERATION_JOBS, "镜头生成"),
+            (_DELIVERY_EXPORT_JOBS, "成片导出"),
+        ):
+            if any(
+                job.get("project_id") == project_id
+                and job.get("state") in active_states
+                for job in jobs.values()
+            ):
+                return web.json_response({
+                    "error": f"该项目的{label}任务仍在进行；请等待完成或先取消任务。",
+                }, status=409)
+        deleted = await asyncio.to_thread(delete_project, project_id)
+        return web.json_response({"deleted": deleted})
+    except (OSError, TypeError, ValueError) as exc:
+        return web.json_response({"error": str(exc)}, status=400)
+    except Exception:
+        logging.exception("Xiaoyue project deletion failed")
+        return web.json_response({"error": "删除 MV 项目失败；请检查服务日志。"}, status=500)
 
 
 @PromptServer.instance.routes.post("/xiaoyue-mv/projects/audio/upload")

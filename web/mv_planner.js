@@ -877,6 +877,8 @@ class ProjectEditor {
         this.inputAssetCatalog = [];
         this.selectedInputAssetKeys = new Set();
         this.pendingAudioFiles = { master: null, vocals: null };
+        this.pendingDeleteProject = null;
+        this.deletingProjectId = "";
         this.skillTemplateLibrary = { visual_outline: [], h3_prompt: [] };
         this.draft = this.projectFromNode();
         this.dialog = this.buildDialog();
@@ -925,6 +927,8 @@ class ProjectEditor {
         const dialog = document.createElement("dialog");
         const titleId = `xiaoyue-project-title-${String(this.node?.id ?? "new")}`;
         const pickerTitleId = `${titleId}-input-picker`;
+        const deleteTitleId = `${titleId}-delete-project`;
+        const deleteDescriptionId = `${deleteTitleId}-description`;
         dialog.className = "xiaoyue-project-dialog";
         dialog.setAttribute("aria-labelledby", titleId);
         dialog.innerHTML = `
@@ -1075,6 +1079,23 @@ class ProjectEditor {
                     <div class="xiaoyue-mv-input-asset-list" data-field="input-asset-list"></div>
                     <footer><output data-field="input-picker-status" role="status"></output><button type="button" class="primary" data-action="confirm-input-assets">导入已选资产</button></footer>
                 </dialog>
+                <dialog class="xiaoyue-project-delete-dialog" aria-labelledby="${deleteTitleId}" aria-describedby="${deleteDescriptionId}">
+                    <form method="dialog">
+                        <h3 id="${deleteTitleId}">永久删除这个项目？</h3>
+                        <p id="${deleteDescriptionId}">项目 <strong data-field="delete-project-name"></strong> 的资料、生成结果和临时文件都会被清理。</p>
+                        <div class="xiaoyue-project-delete-paths">
+                            <span>ComfyUI input</span>
+                            <span>ComfyUI output</span>
+                            <span>ComfyUI temp</span>
+                            <code data-field="delete-project-path"></code>
+                        </div>
+                        <p class="xiaoyue-project-delete-warning">此操作不可恢复。正在生成或导出的项目不会被删除。</p>
+                        <footer>
+                            <button type="submit" value="cancel" autofocus>保留项目</button>
+                            <button type="submit" value="delete" class="danger">永久删除</button>
+                        </footer>
+                    </form>
+                </dialog>
             </div>`;
         return dialog;
     }
@@ -1086,22 +1107,13 @@ class ProjectEditor {
     bindEvents() {
         this.dialog.querySelector('[data-action="close"]').addEventListener("click", () => this.destroy());
         this.dialog.addEventListener("cancel", (event) => {
+            if (event.target !== this.dialog) return;
             event.preventDefault();
             this.destroy();
         });
         this.dialog.querySelector('[data-action="new-project"]').addEventListener("click", () => {
+            this.draft = this.emptyProjectDraft();
             this.pendingAudioFiles = { master: null, vocals: null };
-            this.draft = {
-                project_id: newProjectId(), project_name: "", project_code: "",
-                revision: 0, storage: null, has_plan: false, has_audio: false,
-                has_vocals: false,
-                project_brief: { description: "", overall_prompt: "", negative_prompt: "" },
-                planning_settings: { target_shot_seconds: 9.0, h3_max_frames: 226 },
-                generation_spec: clone(DEFAULT_GENERATION_SPEC),
-                skill_templates: normalizeSkillTemplateSelection(null),
-                lyrics: { source_text: "", format: "auto" },
-                assets: [], audio: {},
-            };
             this.renderDraft();
             this.field("project-name").focus();
         });
@@ -1213,6 +1225,7 @@ class ProjectEditor {
             this.updateInputPickerStatus();
         });
         this.dialog.querySelector(".xiaoyue-mv-input-picker").addEventListener("cancel", (event) => {
+            if (event.target !== event.currentTarget) return;
             event.preventDefault();
             this.closeInputAssetPicker();
         });
@@ -1230,6 +1243,50 @@ class ProjectEditor {
             this.draft.assets = this.draft.assets.filter((item) => item.id !== card.dataset.assetId);
             this.renderProjectAssets();
         });
+        const deleteDialog = this.dialog.querySelector(".xiaoyue-project-delete-dialog");
+        deleteDialog.addEventListener("close", () => {
+            const choice = deleteDialog.returnValue;
+            deleteDialog.returnValue = "";
+            const project = this.pendingDeleteProject;
+            this.pendingDeleteProject = null;
+            if (choice === "delete" && project) this.deleteProject(project);
+        });
+    }
+
+    emptyProjectDraft() {
+        return {
+            project_id: newProjectId(), project_name: "", project_code: "",
+            revision: 0, storage: null, has_plan: false, has_audio: false,
+            has_vocals: false,
+            project_brief: { description: "", overall_prompt: "", negative_prompt: "" },
+            planning_settings: { target_shot_seconds: 9.0, h3_max_frames: 226 },
+            generation_spec: clone(DEFAULT_GENERATION_SPEC),
+            skill_templates: normalizeSkillTemplateSelection(null),
+            lyrics: { source_text: "", format: "auto" },
+            assets: [], audio: {},
+        };
+    }
+
+    clearDeletedProjectState() {
+        for (const [name, value] of [
+            ["project_name", ""],
+            ["project_code", ""],
+            ["project_id", this.draft.project_id],
+            ["project_state_json", ""],
+        ]) {
+            const widget = nodeWidget(this.node, name);
+            if (widget) widget.value = value;
+        }
+        const widget = planWidget(this.node);
+        if (widget) {
+            widget.value = "";
+            widget.callback?.(widget.value, app.canvas, this.node, widget);
+        }
+        this.savedState = null;
+        payloadByNode.delete(this.node);
+        updateNodeLabel(this.node, null);
+        updateProjectNodeLabel(this.node, null);
+        markGraphChanged(this.node);
     }
 
     setStatus(text, kind = "") {
@@ -1428,6 +1485,8 @@ class ProjectEditor {
             return;
         }
         for (const project of this.projects) {
+            const item = document.createElement("div");
+            item.className = "xiaoyue-project-list-item";
             const button = document.createElement("button");
             button.type = "button";
             button.className = "xiaoyue-project-row";
@@ -1449,7 +1508,72 @@ class ProjectEditor {
             button.append(identity, state, revision);
             button.addEventListener("click", () => this.selectProject(
                 project.project_id, { forceRestore: true }));
-            list.appendChild(button);
+            const deleteButton = document.createElement("button");
+            deleteButton.type = "button";
+            deleteButton.className = "xiaoyue-project-row-delete";
+            deleteButton.textContent = this.deletingProjectId === project.project_id
+                ? "删除中…" : "删除";
+            deleteButton.disabled = Boolean(this.deletingProjectId);
+            deleteButton.setAttribute(
+                "aria-label",
+                `删除项目 ${project.project_name || project.project_code || project.project_id}`,
+            );
+            deleteButton.addEventListener("click", () => this.confirmProjectDeletion(project));
+            item.append(button, deleteButton);
+            list.appendChild(item);
+        }
+    }
+
+    confirmProjectDeletion(project) {
+        if (this.deletingProjectId) return;
+        this.pendingDeleteProject = project;
+        this.field("delete-project-name").textContent =
+            `${project.project_name || "未命名项目"}（${project.project_code || "无编号"}）`;
+        this.field("delete-project-path").textContent =
+            `xiaoyue_mv_projects/${project.project_id}`;
+        const dialog = this.dialog.querySelector(".xiaoyue-project-delete-dialog");
+        if (!dialog.open) dialog.showModal();
+    }
+
+    async deleteProject(project) {
+        if (this.deletingProjectId) return;
+        this.deletingProjectId = project.project_id;
+        this.renderProjects();
+        this.setStatus(`正在清理项目 ${project.project_code || project.project_name} 的全部文件…`, "loading");
+        try {
+            const response = await api.fetchApi(
+                `/xiaoyue-mv/projects/${encodeURIComponent(project.project_id)}/delete`,
+                { method: "POST" },
+            );
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok) throw new Error(data.error || "删除项目失败。");
+
+            this.projects = this.projects.filter(
+                (item) => item.project_id !== project.project_id);
+            const draftWasDeleted = this.draft.project_id === project.project_id;
+            const activeWasDeleted = String(
+                nodeWidget(this.node, "project_id")?.value || "") === project.project_id;
+            if (draftWasDeleted) {
+                this.draft = this.emptyProjectDraft();
+                this.pendingAudioFiles = { master: null, vocals: null };
+            }
+            if (activeWasDeleted) this.clearDeletedProjectState();
+            this.renderDraft();
+            this.setStatus(
+                `项目 ${project.project_code || project.project_name} 已删除；input、output 和 temp 空间已清理。`,
+                "success",
+            );
+            const focusTarget = this.dialog.querySelector(".xiaoyue-project-row")
+                || this.dialog.querySelector('[data-action="new-project"]');
+            focusTarget?.focus({ preventScroll: true });
+        } catch (error) {
+            this.setStatus(
+                `未能删除项目：${error?.message || String(error)} 请处理后重试。`,
+                "error",
+            );
+        } finally {
+            this.deletingProjectId = "";
+            this.renderProjects();
         }
     }
 
@@ -3101,6 +3225,7 @@ class PlannerEditor {
         this.field("input-asset-search").addEventListener("input", () => this.renderInputAssetCatalog());
         const inputPicker = this.dialog.querySelector(".xiaoyue-mv-input-picker");
         inputPicker.addEventListener("cancel", (event) => {
+            if (event.target !== inputPicker) return;
             event.preventDefault();
             this.closeInputAssetPicker();
         });
@@ -3129,6 +3254,7 @@ class PlannerEditor {
         });
         const shotAssetPicker = this.dialog.querySelector(".xiaoyue-mv-shot-asset-picker");
         shotAssetPicker.addEventListener("cancel", (event) => {
+            if (event.target !== shotAssetPicker) return;
             event.preventDefault();
             this.closeShotAssetPicker();
         });
@@ -3148,6 +3274,7 @@ class PlannerEditor {
         });
         const assetPreviewDialog = this.dialog.querySelector(".xiaoyue-mv-asset-preview-dialog");
         assetPreviewDialog.addEventListener("cancel", (event) => {
+            if (event.target !== assetPreviewDialog) return;
             event.preventDefault();
             this.closeAssetPreview();
         });
@@ -3454,10 +3581,12 @@ class PlannerEditor {
         });
         const replanDialog = this.dialog.querySelector(".xiaoyue-mv-replan-dialog");
         replanDialog.addEventListener("cancel", (event) => {
+            if (event.target !== replanDialog) return;
             event.preventDefault();
             this.closeAutomaticReplanDialog();
         });
         this.dialog.addEventListener("cancel", (event) => {
+            if (event.target !== this.dialog) return;
             event.preventDefault();
             this.close();
         });

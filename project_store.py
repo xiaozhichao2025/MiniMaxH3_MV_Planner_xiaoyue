@@ -4,6 +4,7 @@ import json
 import math
 import os
 import re
+import shutil
 import threading
 import uuid
 from copy import deepcopy
@@ -497,6 +498,48 @@ def load_project(project_id: str, roots: dict[str, Path] | None = None) -> dict[
         manifest["planning_settings"] = normalize_planning_settings(inferred)
     _ensure_layout(layout)
     return project_handle(manifest, layout)
+
+
+def delete_project(project_id: str, roots: dict[str, Path] | None = None) -> dict[str, Any]:
+    """Delete one verified project's input, output, and temp directories.
+
+    The input directory is removed last so a partial filesystem failure leaves
+    the project visible in the workbench and lets the user retry the cleanup.
+    """
+    project_id = normalize_project_id(project_id)
+    storage_roots = _storage_roots(roots)
+    layout = project_layout(project_id, storage_roots)
+
+    with _PROJECT_LOCK:
+        for storage_type, target in layout.items():
+            project_root = (storage_roots[storage_type] / PROJECTS_SUBFOLDER).resolve()
+            if target.parent != project_root or target.name != project_id:
+                raise ValueError(f"项目 {storage_type} 删除路径越界。")
+            if target.exists() and not target.is_dir():
+                raise ValueError(f"项目 {storage_type} 路径不是文件夹，已停止删除。")
+
+        manifest_path = layout["input"] / "project.json"
+        if not manifest_path.is_file():
+            raise ValueError("找不到项目；它可能已被删除，请刷新项目列表。")
+        manifest = _read_json(manifest_path)
+        _validate_manifest(manifest, project_id)
+
+        deleted_storage = []
+        # Keep the manifest available until generated and temporary data have
+        # been removed successfully, so an interrupted cleanup remains retryable.
+        for storage_type in ("output", "temp", "input"):
+            target = layout[storage_type]
+            if not target.exists():
+                continue
+            shutil.rmtree(target)
+            deleted_storage.append(storage_type)
+
+    return {
+        "project_id": project_id,
+        "project_code": str(manifest.get("project_code") or ""),
+        "project_name": str(manifest.get("project_name") or ""),
+        "deleted_storage": deleted_storage,
+    }
 
 
 def load_project_plan(project_id: str, roots: dict[str, Path] | None = None) -> dict[str, Any] | None:

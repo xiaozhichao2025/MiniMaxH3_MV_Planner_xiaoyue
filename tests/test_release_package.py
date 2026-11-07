@@ -26,12 +26,12 @@ class _Routes:
 class ReleasePackageTests(unittest.TestCase):
     def test_release_version_and_readme_assets(self):
         package_init = (ROOT / "__init__.py").read_text("utf-8")
-        self.assertIn('__version__ = "0.1.0"', package_init)
+        self.assertIn('__version__ = "0.1.1"', package_init)
         changelog = (ROOT / "CHANGELOG.md").read_text("utf-8")
-        self.assertIn("## v0.1.0", changelog)
+        self.assertIn("## v0.1.1", changelog)
         for readme in ("README.md", "README_EN.md"):
             body = (ROOT / readme).read_text("utf-8")
-            self.assertIn("v0.1.0", body)
+            self.assertIn("v0.1.1", body)
             for filename in (
                 "01-project-setup.png",
                 "02-mv-workbench.png",
@@ -129,6 +129,10 @@ class ReleasePackageTests(unittest.TestCase):
             self.assertNotIn("MiniMaxH3_MV_Planner_Setup_xiaoyue", mappings)
             self.assertIn(("POST", "/xiaoyue-mv/generation/start"), routes.paths)
             self.assertIn(("POST", "/xiaoyue-mv/delivery/export"), routes.paths)
+            self.assertIn(
+                ("POST", "/xiaoyue-mv/projects/{project_id}/delete"),
+                routes.paths,
+            )
         finally:
             for name in list(sys.modules):
                 if name == package_name or name.startswith(package_name + "."):

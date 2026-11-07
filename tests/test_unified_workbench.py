@@ -449,6 +449,31 @@ class UnifiedWorkbenchTests(unittest.TestCase):
         self.assertIn("skill_template_library", source)
         self.assertIn("this.plan.skill_templates[stage]", source)
 
+    def test_project_settings_support_confirmed_three_root_deletion(self):
+        source = (ROOT / "web" / "mv_planner.js").read_text("utf-8")
+        styles = (ROOT / "web" / "mv_planner.css").read_text("utf-8")
+        server = (ROOT / "server_api.py").read_text("utf-8")
+        self.assertIn('class="xiaoyue-project-delete-dialog"', source)
+        self.assertIn('value="cancel" autofocus', source)
+        self.assertIn('value="delete" class="danger"', source)
+        self.assertIn('/delete`,\n                { method: "POST" }', source)
+        self.assertIn("input、output 和 temp 空间已清理", source)
+        self.assertIn(".xiaoyue-project-delete-dialog::backdrop", styles)
+        self.assertIn(
+            '@PromptServer.instance.routes.post("/xiaoyue-mv/projects/{project_id}/delete")',
+            server,
+        )
+        self.assertIn("await asyncio.to_thread(delete_project, project_id)", server)
+
+    def test_cancelling_native_file_pickers_does_not_close_workbench_dialogs(self):
+        source = (ROOT / "web" / "mv_planner.js").read_text("utf-8")
+        self.assertGreaterEqual(
+            source.count("if (event.target !== this.dialog) return;"),
+            2,
+        )
+        self.assertIn("if (event.target !== inputPicker) return;", source)
+        self.assertIn("if (event.target !== shotAssetPicker) return;", source)
+
     def test_lip_sync_toggle_shares_asset_action_row_with_short_label(self):
         source = (ROOT / "web" / "mv_planner.js").read_text("utf-8")
         styles = (ROOT / "web" / "mv_planner.css").read_text("utf-8")

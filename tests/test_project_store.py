@@ -54,6 +54,31 @@ class ProjectStoreTests(unittest.TestCase):
             "pixel_alignment": 32,
         })
 
+    def test_project_deletion_cleans_input_output_and_temp_directories(self):
+        project = store.upsert_project(
+            self.project_id, "待废除 MV", "OLD01", self.roots)
+        layout = {key: Path(value) for key, value in project["paths"].items()}
+        (layout["input"] / "source" / "master.wav").write_bytes(b"audio")
+        (layout["output"] / "generations" / "shot.mp4").write_bytes(b"video")
+        (layout["temp"] / "runtime" / "cache.bin").write_bytes(b"cache")
+
+        deleted = store.delete_project(self.project_id, self.roots)
+
+        self.assertEqual(deleted["project_id"], self.project_id)
+        self.assertEqual(deleted["project_code"], "OLD01")
+        self.assertEqual(deleted["deleted_storage"], ["output", "temp", "input"])
+        for path in layout.values():
+            self.assertFalse(path.exists())
+        self.assertEqual(store.list_projects(self.roots), [])
+
+    def test_project_deletion_rejects_unknown_or_invalid_project_ids(self):
+        store.upsert_project(self.project_id, "保留 MV", "KEEP01", self.roots)
+        with self.assertRaisesRegex(ValueError, "项目 ID 无效"):
+            store.delete_project("../xiaoyue_mv_projects", self.roots)
+        with self.assertRaisesRegex(ValueError, "找不到项目"):
+            store.delete_project("52a7953f-f200-4479-ac58-b2ca5c895882", self.roots)
+        self.assertEqual(len(store.list_projects(self.roots)), 1)
+
     def test_opening_same_project_is_idempotent_but_display_name_change_increments_revision(self):
         first = store.upsert_project(
             self.project_id, "天长地久 MV", "TC99", self.roots)
