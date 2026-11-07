@@ -12,6 +12,14 @@
 
 当前插件版本：**v0.1.1 预览版**。样例工作流文件名中的 `v1.0` 是工作流模板修订号，不等于插件版本。
 
+## v0.1.1 更新
+
+- **废除项目并释放硬盘空间**：最近项目列表新增“删除”。二次确认后，只清理该项目在 ComfyUI `input`、`output` 和 `temp` 下的 UUID 目录；不会影响其他项目。
+- **删除保护**：删除前校验项目清单和目录归属；提示词、镜头生成或成片导出仍在运行时拒绝删除。删除当前项目后，工作流节点中的失效项目引用也会同步清空。
+- **修复本地文件选择器取消误关工作台**：取消选择母带、干声、字幕、公用资产或单镜资产时，只关闭系统文件选择器，不再连带关闭项目设定或 MV 工作台。
+
+完整版本记录见 [CHANGELOG.md](CHANGELOG.md)。
+
 ## 样例工作流在哪里
 
 仓库提供**一个可编辑的样例工作流**：[MiniMax H3 MV 工作台样例 JSON](workflows/MiniMaxH3_MV_Planner_xiaoyue_MV工作台v1.0.json)。安装插件后，文件位于 `ComfyUI/custom_nodes/MiniMaxH3_MV_Planner_xiaoyue/workflows/MiniMaxH3_MV_Planner_xiaoyue_MV工作台v1.0.json`。把这个 JSON 拖入 ComfyUI 画布，或通过「加载工作流」选择它；若提示缺少节点，按下方依赖清单安装并重启 ComfyUI。工作台负责规划与驱动，后面的 H3 生成链只是可替换的接线示例。

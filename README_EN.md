@@ -12,6 +12,14 @@ The workbench **plans, organizes, and drives** each shot through visible output 
 
 Current plugin version: **v0.1.1 preview**. The `v1.0` in the example workflow filename is that template's revision, not the plugin version.
 
+## What's new in v0.1.1
+
+- **Retire projects and reclaim disk space:** the recent-project list now includes Delete. After a second confirmation, cleanup is limited to that project's UUID directories under ComfyUI `input`, `output`, and `temp`; other projects are untouched.
+- **Deletion safeguards:** the manifest and directory ownership are validated first. Deletion is blocked while prompt, shot-generation, or delivery-export jobs are active, and deleting the current project clears stale workflow-node references.
+- **Native file-picker cancellation fix:** cancelling selection of master audio, vocals, subtitles, shared assets, or shot assets now closes only the system picker instead of closing Project Setup or the MV Workbench.
+
+See [CHANGELOG.md](CHANGELOG.md) for the complete release history.
+
 ## Where to find the example workflow
 
 The repository contains **one editable example workflow**: [MiniMax H3 MV Workbench JSON](workflows/MiniMaxH3_MV_Planner_xiaoyue_MV工作台v1.0.json). After installation, it is at `ComfyUI/custom_nodes/MiniMaxH3_MV_Planner_xiaoyue/workflows/MiniMaxH3_MV_Planner_xiaoyue_MV工作台v1.0.json`. Drag the JSON onto the ComfyUI canvas or open it with “Load Workflow.” If ComfyUI reports missing nodes, install them from the dependency list below and restart. The workbench plans and drives the project; the downstream H3 graph is a replaceable wiring example.
