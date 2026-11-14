@@ -24,6 +24,8 @@ BACKBONE_NODE_PROPERTY = "xiaoyue_mv_backbone_id"
 MERGED_WORKBENCH_TYPE = "MiniMaxH3_MV_Planner_xiaoyue"
 SHOT_INPUT_TYPE = "Xiaoyue_MV_ShotInput"
 PLANNER_OUTPUT_COUNT = 8
+SAVE_VIDEO_COMPAT_NODE_ID = 10001
+SAVE_VIDEO_COMPAT_NODE_TYPE = "Xiaoyue_MV_SaveVideoExecutionCompat"
 
 
 def delivery_tail_start(deliver_from_raw_frame: int, deliver_frames: int,
@@ -506,6 +508,17 @@ def compose_shot_workflow(ui: dict[str, Any], node_info: dict[str, Any], *,
         if not {12, 13, 14}.issubset(used_outputs):
             raise ValueError(
                 "续写镜头必须将前镜视频路径、引导帧数和起始帧从本镜输入连线到生成工作流。")
+    if graph["5"]["class_type"] == "SaveVideo":
+        # V3 SaveVideo uses schema.is_output_node, but mixed ComfyUI builds can
+        # still select prompt endpoints only from legacy OUTPUT_NODE classes.
+        # This generated-only sink makes SaveVideo a dependency and therefore
+        # forces the file write without altering the user's canvas workflow.
+        _add(
+            graph,
+            SAVE_VIDEO_COMPAT_NODE_ID,
+            SAVE_VIDEO_COMPAT_NODE_TYPE,
+            video=["5", 0],
+        )
     return graph
 
 

@@ -598,11 +598,12 @@ class ShotGenerationStoreTests(unittest.TestCase):
 
 
 class WorkflowConversionTests(unittest.TestCase):
-    def test_savevideo_mp4_in_images_is_a_video_result(self):
+    def test_v3_previewvideo_mp4_in_images_is_a_video_result(self):
         history = {"outputs": {"5": {"images": [{
             "filename": "SC01_v1_00001_.mp4", "type": "output",
             "subfolder": "project/generations",
-            "metadata": {"kind": "video", "frame_count": 209}}]}}}
+            "metadata": {"kind": "video", "frame_count": 209}}],
+            "animated": (True,)}}}
         self.assertEqual(
             shot_workflow.history_video_descriptor(history)["filename"],
             "SC01_v1_00001_.mp4")
@@ -802,6 +803,7 @@ class ShotWorkflowSpliceTests(unittest.TestCase):
                133, 134, 137, 20000)
         graph = {str(node_id): {"class_type": "Stub", "inputs": {}}
                  for node_id in ids}
+        graph["5"]["class_type"] = "SaveVideo"
         graph["5"]["inputs"]["video"] = ["34", 0]
         graph["5"]["inputs"]["filename_prefix"] = ["130", 8]
         graph["11"]["class_type"] = "MiniMaxH3ReferenceToVideo"
@@ -906,6 +908,11 @@ class ShotWorkflowSpliceTests(unittest.TestCase):
         self.assertIn("130", graph)
         self.assertNotIn("2", graph)
         self.assertNotIn("20000", graph)
+        compat_id = str(shot_workflow.SAVE_VIDEO_COMPAT_NODE_ID)
+        self.assertEqual(graph[compat_id], {
+            "class_type": shot_workflow.SAVE_VIDEO_COMPAT_NODE_TYPE,
+            "inputs": {"video": ["5", 0]},
+        })
 
     def test_router_identifies_only_the_connected_h3_pass(self):
         single = self.backbone_stub()
@@ -975,6 +982,7 @@ class ShotWorkflowSpliceTests(unittest.TestCase):
         self.assertEqual(graph["5"]["inputs"]["directory"], ["130", 17])
         self.assertEqual(graph["5"]["inputs"]["filename"], ["130", 18])
         self.assertEqual(graph["300"]["inputs"]["frames"], ["130", 6])
+        self.assertNotIn(str(shot_workflow.SAVE_VIDEO_COMPAT_NODE_ID), graph)
 
     def test_output_without_workbench_naming_wire_is_rejected(self):
         backbone = self.backbone_stub()

@@ -125,6 +125,11 @@ class ReleasePackageTests(unittest.TestCase):
                 mappings["MiniMaxH3_MV_Planner_xiaoyue"].INPUT_TYPES()["optional"],
             )
             self.assertIn("Xiaoyue_Local_Whisper_Provider", mappings)
+            compat = mappings["Xiaoyue_MV_SaveVideoExecutionCompat"]
+            self.assertTrue(compat.OUTPUT_NODE)
+            self.assertEqual(compat.RETURN_TYPES, ())
+            self.assertEqual(
+                compat.INPUT_TYPES()["required"]["video"][0], "VIDEO")
             self.assertNotIn("Xiaoyue_LAN_ASR_Provider", mappings)
             self.assertNotIn("MiniMaxH3_MV_Planner_Setup_xiaoyue", mappings)
             self.assertIn(("POST", "/xiaoyue-mv/generation/start"), routes.paths)

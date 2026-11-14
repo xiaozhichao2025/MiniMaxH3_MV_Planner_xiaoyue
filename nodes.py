@@ -713,6 +713,35 @@ class Xiaoyue_MV_PreviewDesk:
         }
 
 
+class Xiaoyue_MV_SaveVideoExecutionCompat:
+    """Legacy output endpoint used only by generated shot API workflows.
+
+    ComfyUI's V3 SaveVideo declares itself through ``is_output_node`` while
+    some executor revisions still discover queue endpoints exclusively through
+    the legacy ``OUTPUT_NODE`` class attribute.  The workbench injects this
+    no-op node downstream of SaveVideo so those mixed revisions execute the
+    saver without changing the user's canvas workflow.
+    """
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {"required": {
+            "video": ("VIDEO", {
+                "tooltip": "MV 工作台内部兼容输入；无需在画布中添加或连接。",
+            }),
+        }}
+
+    RETURN_TYPES = ()
+    FUNCTION = "trigger"
+    CATEGORY = "Xiaoyue/MiniMax H3/内部兼容"
+    OUTPUT_NODE = True
+    DESCRIPTION = "工作台内部 SaveVideo 执行兼容端点；用户无需手动添加。"
+
+    def trigger(self, video):
+        del video
+        return ()
+
+
 class Xiaoyue_MV_ShotInput:
     """Legacy canvas adapter; new templates expose shot ports on the workbench."""
 
@@ -962,6 +991,7 @@ class Xiaoyue_MV_ReferenceSlots:
 NODE_CLASS_MAPPINGS = {
     "MiniMaxH3_MV_Planner_xiaoyue": MiniMaxH3_MV_Planner_xiaoyue,
     "Xiaoyue_MV_PreviewDesk": Xiaoyue_MV_PreviewDesk,
+    "Xiaoyue_MV_SaveVideoExecutionCompat": Xiaoyue_MV_SaveVideoExecutionCompat,
     "Xiaoyue_MV_ShotInput": Xiaoyue_MV_ShotInput,
     "Xiaoyue_MV_RuntimeShot": Xiaoyue_MV_RuntimeShot,
     "Xiaoyue_MV_ReferenceSlots": Xiaoyue_MV_ReferenceSlots,
@@ -972,6 +1002,7 @@ NODE_CLASS_MAPPINGS = {
 NODE_DISPLAY_NAME_MAPPINGS = {
     "MiniMaxH3_MV_Planner_xiaoyue": "MiniMax H3 · MV 项目工作台 (xiaoyue)",
     "Xiaoyue_MV_PreviewDesk": "MV 最终验收剪辑台 (xiaoyue)",
+    "Xiaoyue_MV_SaveVideoExecutionCompat": "MV SaveVideo 执行兼容（内部）",
     "Xiaoyue_MV_ShotInput": "MV 本镜输入｜规划与原曲 (xiaoyue)",
     "Xiaoyue_MV_RuntimeShot": "MV 本镜运行值 (xiaoyue)",
     "Xiaoyue_MV_ReferenceSlots": "MV 本镜附件槽位 (xiaoyue)",

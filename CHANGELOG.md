@@ -6,9 +6,9 @@ Plugin versions use `vMAJOR.MINOR.PATCH` Git tags. The example workflow's `v1.0`
 
 ## 未发布 / Unreleased
 
-- 暂无。
+- 修复部分新版 ComfyUI 组合中 V3 `SaveVideo` 未被旧式执行端点扫描选中，导致任务显示成功却没有视频落盘的问题。MV 工作台现在只在提交的镜头 API 图中注入内部兼容端点，强制执行 `SaveVideo`，不会改写用户的画布工作流。
 
-- None.
+- Fixed mixed ComfyUI revisions where V3 `SaveVideo` was not selected by the legacy output-endpoint scan, allowing a prompt to report success without writing a video. The MV Workbench now injects an internal compatibility endpoint only into the submitted shot API graph, forcing `SaveVideo` to execute without rewriting the user's canvas workflow.
 
 ## v0.1.1 · 2026-11-07 · 项目清理与稳定性 / Project cleanup and stability
 
