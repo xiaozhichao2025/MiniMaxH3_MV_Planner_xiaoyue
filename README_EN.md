@@ -10,9 +10,15 @@ For long takes, **continuation shots** derive guide frames from a selected paren
 
 The workbench **plans, organizes, and drives** each shot through visible output ports. You still choose and wire the downstream model, sampler, LoRAs, upscaler, and save node. This repository contains the plugin, two bundled Skills, and one editable MiniMax H3 example workflow; it contains **no models, songs, or generated footage**.
 
-Current plugin version: **v0.1.3 preview**. The `v1.0` in the example workflow filename is that template's revision, not the plugin version.
+Current plugin version: **v0.1.4 preview**. The `v1.0` in the example workflow filename is that template's revision, not the plugin version.
 
-## What's new in v0.1.3
+## What's new in v0.1.4
+
+- **Usable first drafts are no longer discarded:** only empty output, a wrong shot ID/mode, or completely missing core structure remains a hard failure. Other quality concerns are shown for human review.
+- **No forced audio-driven performance when singing is disabled:** non-singing shots no longer retry merely because `<Audio N>` is absent from performance or lip-movement descriptions.
+- **Less wasted inference:** missing secondary fields, audio placement, singing detail, or Chinese-language ratio keeps the first draft instead of risking an empty second response.
+
+### What's new in v0.1.3
 
 - **CreateVideo widget migration fix:** when ComfyUI adds `chroma_subsampling`, an old canvas no longer shifts `codec: none` into that new field as an invalid chroma value.
 - **Target-version adaptation:** newly added widgets use the current ComfyUI default. Valid `444`, `422`, and `420` choices are preserved; shifted legacy values safely fall back to `auto`.
@@ -148,7 +154,7 @@ Both bundled and user-added Skills are read **only from this plugin's `skills/` 
 - Source audio, assets, plans, and shot versions remain in ComfyUI's project-data directory. Updating or cloning this plugin does **not** upload them. Before sharing a workflow, inspect node values, asset paths, and credentials yourself.
 - The published template excludes the author's private LAN ASR provider and service configuration. Use the local Whisper provider, or leave ASR disconnected and edit/import lyrics manually.
 - The editor currently uses a **24 fps** timeline. The example H3 graph uses `17N+5` generation windows. Other video models can be connected through visible ports, but the sample graph is not a universal adapter.
-- Plugin releases use `vMAJOR.MINOR.PATCH` Git tags and the [changelog](CHANGELOG.md). A project's *shot versions* are separate generation records, not Git versions. `v0.1.0` was the first private preview snapshot; `v0.1.1` adds guarded project deletion, disk cleanup, and the native-file-picker cancellation fix; `v0.1.2` fixes V3 `SaveVideo` execution on mixed ComfyUI revisions; `v0.1.3` fixes old widget values shifting after the `CreateVideo` schema upgrade. Dependency and import compatibility checks remain ongoing.
+- Plugin releases use `vMAJOR.MINOR.PATCH` Git tags and the [changelog](CHANGELOG.md). A project's *shot versions* are separate generation records, not Git versions. `v0.1.0` was the first private preview snapshot; `v0.1.1` adds guarded project deletion, disk cleanup, and the native-file-picker cancellation fix; `v0.1.2` fixes V3 `SaveVideo` execution on mixed ComfyUI revisions; `v0.1.3` fixes old widget values shifting after the `CreateVideo` schema upgrade; `v0.1.4` downgrades content-quality prompt checks to human-review warnings. Dependency and import compatibility checks remain ongoing.
 
 ## License and third-party content
 

@@ -644,13 +644,15 @@ def parse_h3_prompt_response(
         text: str, expected_shot_id: str, mode: str,
         output_language: str = "zh-CN",
         *, original_song_audio_label: str = "",
-        singing_lyrics: str = "",
+        singing_lyrics: str = "", singing_performance: bool = False,
 ) -> str:
     prompt = extract_h3_prompt_response(text, expected_shot_id, mode)
+    validate_h3_prompt_structure(prompt, expected_shot_id, mode)
     return validate_h3_prompt_quality(
         prompt, expected_shot_id, mode, output_language,
         original_song_audio_label=original_song_audio_label,
         singing_lyrics=singing_lyrics,
+        singing_performance=singing_performance,
     )
 
 
@@ -678,10 +680,49 @@ def extract_h3_prompt_response(text: str, expected_shot_id: str, mode: str) -> s
     return prompt
 
 
+def validate_h3_prompt_structure(
+        prompt: str, expected_shot_id: str, mode: str) -> str:
+    """Reject only a response that lacks the mode's main H3 structure."""
+    core_fields = (
+        ("subject_definitions", "detailed_description")
+        if mode == "Ref2VA" else
+        ("integrated_multimodal_description",)
+    )
+    if not any(re.search(rf"(?mi)^\s*{re.escape(field)}\s*:", prompt)
+               for field in core_fields):
+        raise ValueError(
+            f"镜头 {expected_shot_id} 的 {mode} 结果完全缺少核心结构："
+            + "、".join(core_fields)
+        )
+    return prompt
+
+
+def review_h3_prompt_response(
+        text: str, expected_shot_id: str, mode: str,
+        output_language: str = "zh-CN", *,
+        original_song_audio_label: str = "",
+        singing_lyrics: str = "", singing_performance: bool = False,
+) -> tuple[str, str]:
+    """Keep a usable first draft and return content concerns as one warning."""
+    prompt = extract_h3_prompt_response(text, expected_shot_id, mode)
+    validate_h3_prompt_structure(prompt, expected_shot_id, mode)
+    try:
+        validate_h3_prompt_quality(
+            prompt, expected_shot_id, mode, output_language,
+            original_song_audio_label=original_song_audio_label,
+            singing_lyrics=singing_lyrics,
+            singing_performance=singing_performance,
+        )
+    except ValueError as exc:
+        return prompt, str(exc)
+    return prompt, ""
+
+
 def validate_h3_prompt_quality(
         prompt: str, expected_shot_id: str, mode: str,
         output_language: str = "zh-CN", *,
         original_song_audio_label: str = "", singing_lyrics: str = "",
+        singing_performance: bool = False,
 ) -> str:
     """Suggest one model retry; callers may still keep the draft for review."""
     required = (
@@ -706,11 +747,12 @@ def validate_h3_prompt_quality(
         )
     if re.search(r"(?mi)^\s*Typography\s*:", prompt):
         raise ValueError(f"镜头 {expected_shot_id} 的结果包含被禁用的 Typography 字段。")
-    if original_song_audio_label and original_song_audio_label not in prompt:
+    if (singing_performance and original_song_audio_label
+            and original_song_audio_label not in prompt):
         raise ValueError(
             f"镜头 {expected_shot_id} 缺少原曲音频附件引用 "
             f"{original_song_audio_label}。")
-    if original_song_audio_label:
+    if singing_performance and original_song_audio_label:
         definition = re.search(
             r"(?ms)^\s*subject_definitions\s*:\s*(.*?)"
             r"(?=^\s*summary\s*:|\Z)", prompt)
@@ -725,7 +767,7 @@ def validate_h3_prompt_quality(
                 f"镜头 {expected_shot_id} 必须在 subject_definitions 定义 "
                 f"{original_song_audio_label}，并在 detailed_description "
                 "说明原曲音频如何驱动本镜表演。")
-    if singing_lyrics:
+    if singing_performance and singing_lyrics:
         description = re.search(
             r"(?ms)^\s*detailed_description\s*:\s*(.*?)"
             r"(?=^\s*overall_soundscape\s*:|\Z)", prompt)

@@ -10,6 +10,16 @@ Plugin versions use `vMAJOR.MINOR.PATCH` Git tags. The example workflow's `v1.0`
 
 - None.
 
+## v0.1.4 · 2026-11-15 · 提示词自检降级 / Softer prompt review
+
+- H3 提示词首稿只要非空、镜头 ID 与模式正确，并含对应模式的核心主结构，就直接保留，不再因内容质量建议自动丢稿重试。
+- 缺少个别官方字段、音频引用位置、演唱细节或中文比例等问题改为人工复核警告；工作台仍写回可用草稿。
+- 关闭演唱的镜头不再强制要求 `<Audio N>` 在提示词中驱动表演或口型。只有空结果、错误路由以及完全缺少核心结构仍属于硬错误。
+
+- The first non-empty H3 draft is now retained when its shot ID, mode, and main mode-specific structure are valid; content-quality suggestions no longer discard the draft and trigger another inference.
+- Missing secondary fields, audio-reference placement, singing detail, and language-ratio concerns are now review warnings while the usable draft is still written back.
+- Shots with singing disabled no longer require `<Audio N>` to drive performance or lip movement. Empty output, wrong routing, and a completely missing core structure remain hard failures.
+
 ## v0.1.3 · 2026-11-14 · CreateVideo 升级兼容 / CreateVideo upgrade compatibility
 
 - 修复 ComfyUI 升级为 `CreateVideo` 新增 `chroma_subsampling` 后，旧画布的 `codec: none` 因控件位置变化被误读为色度采样值，造成镜头生成完成但保存链被验证器忽略的问题。

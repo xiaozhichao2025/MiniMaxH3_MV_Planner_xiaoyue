@@ -22,12 +22,10 @@ from server import PromptServer
 
 from .creative_outline import build_outline_prompts, parse_outline_response
 from .h3_prompt import (
-    H3PromptLanguageError,
     build_h3_prompt_prompts,
     build_h3_retry_user_prompt,
     continuation_predecessor,
-    extract_h3_prompt_response,
-    parse_h3_prompt_response,
+    review_h3_prompt_response,
 )
 from .project_audio import describe_audio, source_extension
 from .planner_core import CONTINUATION_WINDOW_RULE_REVISION
@@ -590,7 +588,7 @@ async def _execute_h3_prompt_job(job_id: str, data: dict[str, Any]) -> None:
                         model.get("max_tokens", "unknown"),
                     )
                     try:
-                        prompt = parse_h3_prompt_response(
+                        prompt, quality_warning = review_h3_prompt_response(
                             raw_text,
                             shot_id,
                             str(input_summary["mode"]),
@@ -599,22 +597,19 @@ async def _execute_h3_prompt_job(job_id: str, data: dict[str, Any]) -> None:
                                 input_summary.get("original_song_audio_label") or ""),
                             singing_lyrics=str(
                                 input_summary.get("singing_lyrics") or ""),
+                            singing_performance=bool(
+                                input_summary.get("singing_performance")),
                         )
-                        break
-                    except ValueError as exc:
-                        if attempt == 2:
-                            # H3 prompts are reviewed by a person. Keep a
-                            # non-empty, correctly routed draft even when a
-                            # content heuristic still dislikes it.
-                            prompt = extract_h3_prompt_response(
-                                raw_text, shot_id, str(input_summary["mode"]))
-                            quality_warning = str(exc)
+                        if quality_warning:
                             logging.warning(
                                 "Xiaoyue MV H3 diagnostic review job=%s shot=%s "
                                 "quality_warning=%s", job_id, shot_id,
                                 quality_warning,
                             )
-                            break
+                        break
+                    except ValueError as exc:
+                        if attempt == 2:
+                            raise
                         first_validation_error = str(exc)
                         logging.warning(
                             "Xiaoyue MV H3 diagnostic retry job=%s shot=%s "
@@ -627,7 +622,7 @@ async def _execute_h3_prompt_job(job_id: str, data: dict[str, Any]) -> None:
                             user_prompt, str(input_summary["mode"]),
                             first_validation_error,
                             rejected_text=raw_text,
-                            language_failure=isinstance(exc, H3PromptLanguageError),
+                            language_failure=False,
                             output_language=str(
                                 input_summary.get("output_language") or "zh-CN"),
                         )

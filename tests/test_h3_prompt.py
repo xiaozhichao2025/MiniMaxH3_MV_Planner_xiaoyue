@@ -223,12 +223,14 @@ non_diegetic_music:
             h3_prompt.parse_h3_prompt_response(
                 prompt, "shot_001", "Ref2VA",
                 original_song_audio_label="<Audio 1>",
-                singing_lyrics="风吹过旧站台")
+                singing_lyrics="风吹过旧站台",
+                singing_performance=True)
         prompt = prompt.replace("女主在站台唱歌", "女主 (S1) 在站台唱歌，唱出 <d>[Chinese] 风吹过旧站台</d>")
         self.assertEqual(h3_prompt.parse_h3_prompt_response(
             prompt, "shot_001", "Ref2VA",
             original_song_audio_label="<Audio 1>",
-            singing_lyrics="风吹过旧站台"), prompt)
+            singing_lyrics="风吹过旧站台",
+            singing_performance=True), prompt)
 
     def test_reviewable_draft_can_be_kept_after_quality_retry(self):
         prompt = """subject_definitions:
@@ -245,14 +247,31 @@ non_diegetic_music:
 N/A"""
         raw = json.dumps({"shot_id": "shot_001", "mode": "Ref2VA",
                           "prompt": prompt}, ensure_ascii=False)
-        with self.assertRaisesRegex(ValueError, "Audio 1"):
-            h3_prompt.parse_h3_prompt_response(
-                raw, "shot_001", "Ref2VA",
-                original_song_audio_label="<Audio 1>")
-        self.assertEqual(
-            h3_prompt.extract_h3_prompt_response(raw, "shot_001", "Ref2VA"),
-            prompt,
+        kept, warning = h3_prompt.review_h3_prompt_response(
+            raw, "shot_001", "Ref2VA",
+            original_song_audio_label="<Audio 1>",
+            singing_performance=False,
         )
+        self.assertEqual(kept, prompt)
+        self.assertEqual(warning, "")
+        kept, warning = h3_prompt.review_h3_prompt_response(
+            raw, "shot_001", "Ref2VA",
+            original_song_audio_label="<Audio 1>",
+            singing_performance=True,
+        )
+        self.assertEqual(kept, prompt)
+        self.assertIn("Audio 1", warning)
+
+    def test_review_keeps_partial_core_draft_but_rejects_missing_core(self):
+        partial = """integrated_multimodal_description:
+[Shot 1] 女主穿过雨夜站台，镜头从侧后方缓慢跟随。"""
+        kept, warning = h3_prompt.review_h3_prompt_response(
+            partial, "shot_002", "T2VA")
+        self.assertEqual(kept, partial)
+        self.assertIn("缺少官方字段", warning)
+        with self.assertRaisesRegex(ValueError, "完全缺少核心结构"):
+            h3_prompt.review_h3_prompt_response(
+                "overall_soundscape:\n雨声持续。", "shot_002", "T2VA")
 
     def test_long_take_receives_previous_outline_and_generated_prompt(self):
         plan = sample_plan()
