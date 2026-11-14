@@ -849,7 +849,8 @@ class ShotWorkflowSpliceTests(unittest.TestCase):
         return graph
 
     def compose(self, *, context=0, rewired=False,
-                parent_lead=22, parent_deliver=204):
+                parent_lead=22, parent_deliver=204,
+                savevideo_outputs=("VIDEO",)):
         deliver = min(204, 226 - context)
         window = {
             "raw_frames": 226,
@@ -881,7 +882,8 @@ class ShotWorkflowSpliceTests(unittest.TestCase):
         with patch.object(shot_workflow, "ui_to_api_workflow",
                           return_value=copy.deepcopy(backbone)):
             return shot_workflow.compose_shot_workflow(
-                {}, {}, prompt="singing performance", window=window,
+                {}, {"SaveVideo": {"output": list(savevideo_outputs)}},
+                prompt="singing performance", window=window,
                 generation_spec=spec, audio_input_name="shot.wav",
                 visual_inputs=[{"media_type": "image", "input_name": "hero.png"}],
                 output_prefix="project/shot_v1",
@@ -913,6 +915,11 @@ class ShotWorkflowSpliceTests(unittest.TestCase):
             "class_type": shot_workflow.SAVE_VIDEO_COMPAT_NODE_TYPE,
             "inputs": {"video": ["5", 0]},
         })
+
+    def test_legacy_savevideo_without_output_socket_stays_native(self):
+        graph = self.compose(savevideo_outputs=())
+        self.assertEqual(graph["5"]["class_type"], "SaveVideo")
+        self.assertNotIn(str(shot_workflow.SAVE_VIDEO_COMPAT_NODE_ID), graph)
 
     def test_router_identifies_only_the_connected_h3_pass(self):
         single = self.backbone_stub()

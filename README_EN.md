@@ -10,9 +10,15 @@ For long takes, **continuation shots** derive guide frames from a selected paren
 
 The workbench **plans, organizes, and drives** each shot through visible output ports. You still choose and wire the downstream model, sampler, LoRAs, upscaler, and save node. This repository contains the plugin, two bundled Skills, and one editable MiniMax H3 example workflow; it contains **no models, songs, or generated footage**.
 
-Current plugin version: **v0.1.1 preview**. The `v1.0` in the example workflow filename is that template's revision, not the plugin version.
+Current plugin version: **v0.1.2 preview**. The `v1.0` in the example workflow filename is that template's revision, not the plugin version.
 
-## What's new in v0.1.1
+## What's new in v0.1.2
+
+- **V3 SaveVideo now reliably writes files:** mixed ComfyUI revisions no longer report a successful shot while skipping the video file.
+- **Older SaveVideo revisions remain supported:** the workbench checks whether the saver exposes a video output socket. Older terminal-only savers stay on their native execution path instead of being wired to the newer compatibility endpoint.
+- **No workflow rewrite:** the compatibility endpoint exists only in the shot API graph submitted by the MV Workbench. It does not modify the canvas workflow or require a manually added node.
+
+### What's new in v0.1.1
 
 - **Retire projects and reclaim disk space:** the recent-project list now includes Delete. After a second confirmation, cleanup is limited to that project's UUID directories under ComfyUI `input`, `output`, and `temp`; other projects are untouched.
 - **Deletion safeguards:** the manifest and directory ownership are validated first. Deletion is blocked while prompt, shot-generation, or delivery-export jobs are active, and deleting the current project clears stale workflow-node references.
@@ -136,7 +142,7 @@ Both bundled and user-added Skills are read **only from this plugin's `skills/` 
 - Source audio, assets, plans, and shot versions remain in ComfyUI's project-data directory. Updating or cloning this plugin does **not** upload them. Before sharing a workflow, inspect node values, asset paths, and credentials yourself.
 - The published template excludes the author's private LAN ASR provider and service configuration. Use the local Whisper provider, or leave ASR disconnected and edit/import lyrics manually.
 - The editor currently uses a **24 fps** timeline. The example H3 graph uses `17N+5` generation windows. Other video models can be connected through visible ports, but the sample graph is not a universal adapter.
-- Plugin releases use `vMAJOR.MINOR.PATCH` Git tags and the [changelog](CHANGELOG.md). A project's *shot versions* are separate generation records, not Git versions. `v0.1.0` was the first private preview snapshot; `v0.1.1` adds guarded project deletion, disk cleanup, and the native-file-picker cancellation fix. Dependency and import compatibility checks remain ongoing.
+- Plugin releases use `vMAJOR.MINOR.PATCH` Git tags and the [changelog](CHANGELOG.md). A project's *shot versions* are separate generation records, not Git versions. `v0.1.0` was the first private preview snapshot; `v0.1.1` adds guarded project deletion, disk cleanup, and the native-file-picker cancellation fix; `v0.1.2` fixes V3 `SaveVideo` execution on mixed ComfyUI revisions. Dependency and import compatibility checks remain ongoing.
 
 ## License and third-party content
 

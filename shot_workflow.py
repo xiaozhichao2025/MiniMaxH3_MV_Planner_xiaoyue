@@ -421,6 +421,23 @@ def history_video_descriptor(history: dict[str, Any],
     return None
 
 
+def _savevideo_has_video_output(node_info: dict[str, Any]) -> bool:
+    """Whether this ComfyUI SaveVideo revision exposes a downstream socket.
+
+    Early V3 SaveVideo revisions were terminal output nodes and returned only
+    UI data.  They already run correctly on their matching legacy executor and
+    cannot feed the compatibility sink.  Later revisions expose a VIDEO output,
+    which is the only shape for which the generated dependency is valid.
+    """
+    info = node_info.get("SaveVideo") if isinstance(node_info, dict) else None
+    outputs = info.get("output") if isinstance(info, dict) else None
+    return bool(
+        isinstance(outputs, (list, tuple))
+        and outputs
+        and str(outputs[0]).upper() == "VIDEO"
+    )
+
+
 def compose_shot_workflow(ui: dict[str, Any], node_info: dict[str, Any], *,
                           prompt: str, window: dict[str, Any],
                           generation_spec: dict[str, Any],
@@ -508,7 +525,8 @@ def compose_shot_workflow(ui: dict[str, Any], node_info: dict[str, Any], *,
         if not {12, 13, 14}.issubset(used_outputs):
             raise ValueError(
                 "续写镜头必须将前镜视频路径、引导帧数和起始帧从本镜输入连线到生成工作流。")
-    if graph["5"]["class_type"] == "SaveVideo":
+    if (graph["5"]["class_type"] == "SaveVideo"
+            and _savevideo_has_video_output(node_info)):
         # V3 SaveVideo uses schema.is_output_node, but mixed ComfyUI builds can
         # still select prompt endpoints only from legacy OUTPUT_NODE classes.
         # This generated-only sink makes SaveVideo a dependency and therefore

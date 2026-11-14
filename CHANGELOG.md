@@ -6,9 +6,19 @@ Plugin versions use `vMAJOR.MINOR.PATCH` Git tags. The example workflow's `v1.0`
 
 ## 未发布 / Unreleased
 
-- 修复部分新版 ComfyUI 组合中 V3 `SaveVideo` 未被旧式执行端点扫描选中，导致任务显示成功却没有视频落盘的问题。MV 工作台现在只在提交的镜头 API 图中注入内部兼容端点，强制执行 `SaveVideo`，不会改写用户的画布工作流。
+- 暂无。
 
-- Fixed mixed ComfyUI revisions where V3 `SaveVideo` was not selected by the legacy output-endpoint scan, allowing a prompt to report success without writing a video. The MV Workbench now injects an internal compatibility endpoint only into the submitted shot API graph, forcing `SaveVideo` to execute without rewriting the user's canvas workflow.
+- None.
+
+## v0.1.2 · 2026-11-14 · SaveVideo 兼容性 / SaveVideo compatibility
+
+- 修复部分新版 ComfyUI 组合中 V3 `SaveVideo` 未被旧式执行端点扫描选中，导致任务显示成功却没有视频落盘的问题。
+- MV 工作台现在只在提交的镜头 API 图中注入内部兼容端点，强制执行 `SaveVideo`；不会改写用户的画布工作流，也不要求用户手动添加兼容节点。
+- 自动识别 `SaveVideo` 是否具有视频输出口；没有输出口的旧版保存节点继续按原生方式运行，不连接新版兼容端点。
+
+- Fixed mixed ComfyUI revisions where V3 `SaveVideo` was not selected by the legacy output-endpoint scan, allowing a prompt to report success without writing a video.
+- The MV Workbench now injects an internal compatibility endpoint only into the submitted shot API graph, forcing `SaveVideo` to execute without rewriting the user's canvas workflow or requiring a manually added node.
+- SaveVideo revisions without a video output socket continue through their native legacy path and are never connected to the newer compatibility endpoint.
 
 ## v0.1.1 · 2026-11-07 · 项目清理与稳定性 / Project cleanup and stability
 

@@ -26,12 +26,12 @@ class _Routes:
 class ReleasePackageTests(unittest.TestCase):
     def test_release_version_and_readme_assets(self):
         package_init = (ROOT / "__init__.py").read_text("utf-8")
-        self.assertIn('__version__ = "0.1.1"', package_init)
+        self.assertIn('__version__ = "0.1.2"', package_init)
         changelog = (ROOT / "CHANGELOG.md").read_text("utf-8")
-        self.assertIn("## v0.1.1", changelog)
+        self.assertIn("## v0.1.2", changelog)
         for readme in ("README.md", "README_EN.md"):
             body = (ROOT / readme).read_text("utf-8")
-            self.assertIn("v0.1.1", body)
+            self.assertIn("v0.1.2", body)
             for filename in (
                 "01-project-setup.png",
                 "02-mv-workbench.png",
