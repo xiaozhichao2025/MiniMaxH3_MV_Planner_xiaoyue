@@ -222,6 +222,21 @@ def _is_widget(spec: Any) -> bool:
     return isinstance(kind, list) or kind in _WIDGET_TYPES
 
 
+def _normalize_widget_value(spec: Any, value: Any) -> Any:
+    """Fall back to a server combo default when an upgrade removed a value."""
+    if not isinstance(spec, (tuple, list)) or not spec:
+        return value
+    kind = spec[0]
+    options_info = spec[1] if len(spec) > 1 and isinstance(spec[1], dict) else {}
+    options = kind if isinstance(kind, list) else (
+        options_info.get("options") if kind == "COMBO" else None
+    )
+    if not isinstance(options, (tuple, list)) or not options or value in options:
+        return value
+    default = options_info.get("default")
+    return default if default in options else options[0]
+
+
 def ui_to_api_workflow(ui: dict[str, Any], node_info: dict[str, Any],
                        output_id: str = "5") -> dict[str, dict[str, Any]]:
     """Convert only the marked video-output ancestry, retaining the live graph."""
@@ -277,15 +292,23 @@ def ui_to_api_workflow(ui: dict[str, Any], node_info: dict[str, Any],
         class_type = str(node.get("type") or "")
         schema = _widget_info(node_info, class_type)
         values = node.get("widgets_values") or []
-        if not isinstance(values, (list, dict)):
+        named_values = node.get("widgets_values_named")
+        if not isinstance(named_values, dict) and isinstance(values, dict):
+            named_values = values
+        if not isinstance(named_values, dict):
+            named_values = None
+        if not isinstance(values, list):
             values = [values]
         cursor = 0
         inputs: dict[str, Any] = {}
         for entry in node.get("inputs", []):
             name = str(entry.get("name") or "")
             widget = bool(entry.get("widget")) or (name in schema and _is_widget(schema[name]))
-            if isinstance(values, dict):
-                value = values.get(name)
+            if named_values is not None:
+                # Named values survive inserted/reordered widgets across
+                # ComfyUI node-schema upgrades. A missing new widget should use
+                # the target server's default, never consume the next old value.
+                value = named_values.get(name)
             else:
                 value = values[cursor] if widget and cursor < len(values) else None
                 if widget:
@@ -297,6 +320,8 @@ def ui_to_api_workflow(ui: dict[str, Any], node_info: dict[str, Any],
                     options = schema[name][1] if len(schema[name]) > 1 else {}
                     value = options.get("default") if isinstance(options, dict) else None
                 if value is not None:
+                    if name in schema:
+                        value = _normalize_widget_value(schema[name], value)
                     inputs[name] = value
         result[node_id] = {"class_type": class_type, "inputs": inputs}
     return result

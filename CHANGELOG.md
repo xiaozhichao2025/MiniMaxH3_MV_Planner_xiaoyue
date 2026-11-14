@@ -10,6 +10,16 @@ Plugin versions use `vMAJOR.MINOR.PATCH` Git tags. The example workflow's `v1.0`
 
 - None.
 
+## v0.1.3 · 2026-11-14 · CreateVideo 升级兼容 / CreateVideo upgrade compatibility
+
+- 修复 ComfyUI 升级为 `CreateVideo` 新增 `chroma_subsampling` 后，旧画布的 `codec: none` 因控件位置变化被误读为色度采样值，造成镜头生成完成但保存链被验证器忽略的问题。
+- 镜头 API 图转换现在优先读取具名控件值；升级新增的控件使用目标 ComfyUI 节点定义中的默认值。已从目标版本移除的普通下拉值也会安全回退到该版本默认值。
+- 不改写工作流 JSON；有效的 `444`、`422`、`420` 用户选择会原样保留，旧值错位时使用 `auto`。
+
+- Fixed old canvases whose `codec: none` value shifted into the newly added `CreateVideo.chroma_subsampling` widget after a ComfyUI upgrade, causing validation to skip the video-save chain after generation.
+- Shot API conversion now prefers named widget values. Newly introduced widgets use the target ComfyUI node default, while removed simple-combo values safely fall back to that version's default.
+- Workflow JSON remains untouched; valid user selections such as `444`, `422`, and `420` are preserved, while shifted legacy values use `auto`.
+
 ## v0.1.2 · 2026-11-14 · SaveVideo 兼容性 / SaveVideo compatibility
 
 - 修复部分新版 ComfyUI 组合中 V3 `SaveVideo` 未被旧式执行端点扫描选中，导致任务显示成功却没有视频落盘的问题。

@@ -613,6 +613,55 @@ class WorkflowConversionTests(unittest.TestCase):
             "filename": "preview.png", "type": "output"}]}}}
         self.assertIsNone(shot_workflow.history_video_descriptor(history))
 
+    def test_createvideo_upgrade_uses_named_widgets_and_combo_default(self):
+        graph = {"nodes": [
+            {"id": 34, "type": "CreateVideo", "inputs": [
+                {"name": "fps", "widget": {"name": "fps"}, "link": None},
+                {"name": "bit_depth", "widget": {"name": "bit_depth"},
+                 "link": None},
+                {"name": "color_space", "widget": {"name": "color_space"},
+                 "link": None},
+                {"name": "chroma_subsampling",
+                 "widget": {"name": "chroma_subsampling"}, "link": None},
+                {"name": "codec", "widget": {"name": "codec"}, "link": None},
+            ], "widgets_values": [24, 8, "sRGB", "none"],
+             "widgets_values_named": {
+                 "fps": 24, "bit_depth": 8, "color_space": "sRGB",
+                 "codec": "none",
+             }},
+            {"id": 5, "type": "SaveVideo",
+             "inputs": [{"name": "video", "link": 1}]},
+        ], "links": [[1, 34, 0, 5, 0, "VIDEO"]]}
+        info = {
+            "CreateVideo": {"input": {
+                "required": {"fps": ["FLOAT", {"default": 30.0}]},
+                "optional": {
+                    "bit_depth": ["COMBO", {"default": "auto",
+                                               "options": ["auto", 8, 10]}],
+                    "color_space": ["COMBO", {"default": "sRGB",
+                                                "options": ["sRGB", "HDR"]}],
+                    "chroma_subsampling": ["COMBO", {
+                        "default": "auto",
+                        "options": ["auto", "444", "422", "420"],
+                    }],
+                    "codec": ["COMBO", {"default": "none",
+                                          "options": ["none", "auto"]}],
+                },
+            }},
+            "SaveVideo": {"input": {"required": {"video": ["VIDEO", {}]}}},
+        }
+        api = shot_workflow.ui_to_api_workflow(graph, info)
+        self.assertEqual(api["34"]["inputs"], {
+            "fps": 24, "bit_depth": 8, "color_space": "sRGB",
+            "chroma_subsampling": "auto", "codec": "none",
+        })
+        graph["nodes"][0]["widgets_values_named"]["chroma_subsampling"] = "none"
+        api = shot_workflow.ui_to_api_workflow(graph, info)
+        self.assertEqual(api["34"]["inputs"]["chroma_subsampling"], "auto")
+        graph["nodes"][0]["widgets_values_named"]["chroma_subsampling"] = "444"
+        api = shot_workflow.ui_to_api_workflow(graph, info)
+        self.assertEqual(api["34"]["inputs"]["chroma_subsampling"], "444")
+
     def test_linked_widgets_keep_widget_order_and_unrelated_nodes_are_pruned(self):
         graph = {
             "nodes": [
