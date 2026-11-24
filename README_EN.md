@@ -14,11 +14,9 @@ Current plugin version: **v0.2.9 preview**. The `v1.9` in the example workflow f
 
 ## What's new in v0.2.9
 
-- **Fixes continuation seam stretching:** the old formula rounded first-pass width and height independently after applying `lowres_scale`, which could produce different horizontal and vertical scale factors. The shorter final axis now establishes one grid scale and the other axis is coupled to the final aspect ratio; `1280×736 / 0.6667` changes from `864×480` to `832×480`.
+- **Fixes continuation seam stretching:** first-pass dimensions are now calculated together from the final aspect ratio and one shared 32-pixel grid scale, preventing width and height rounding from producing different effective enlargement factors.
 - **Fixes continuation seam colour jumps:** the final frame of the parent's 22-frame overlap is the colour reference, and the first delivered frame after the new segment's overlap is the source baseline. One fixed `reinhard_lab / target_frame` transform is shared by the segment; it is not per-frame grading. The template defaults to `0.75`, and users can tune `0.5–0.75` for live-action, cartoon, or flat-colour material.
-- **The original quality backbone stays intact:** original Swan 6+2, dual H3 injectors and LoRA stacks, shared noise, Swan SelfLift latent lifting, and one clean Guide batch remain. `SelfLiftSplit spatial_tiles` and extra Guide image noise are not used.
-- **Load v1.9 after upgrading:** the new workflow adds final-MP-to-first-pass-scale conversion and a continuation-only colour-transfer switch. Old canvases cannot acquire those nodes and dynamic links automatically and may fail with missing inputs during generation.
-- **Only two anchors remain:** `v1.9` is the current runnable template with backbone `v2.10`. `v1.0` is retained only as the original two-pass anchor and is not compatible with the current plugin. The erroneous diagnostic `v1.1–v1.8` files are removed and are not part of the Git release.
+- **Update instructions:** after updating the plugin and restarting ComfyUI, reload the `v1.9` workflow. An already-open older canvas cannot acquire the new size conversion and continuation-colour structure automatically and may fail with missing inputs.
 
 ### What's new in v0.1.4
 
@@ -162,7 +160,7 @@ Both bundled and user-added Skills are read **only from this plugin's `skills/` 
 - Source audio, assets, plans, and shot versions remain in ComfyUI's project-data directory. Updating or cloning this plugin does **not** upload them. Before sharing a workflow, inspect node values, asset paths, and credentials yourself.
 - The published template excludes the author's private LAN ASR provider and service configuration. Use the local Whisper provider, or leave ASR disconnected and edit/import lyrics manually.
 - The editor currently uses a **24 fps** timeline. The example H3 graph uses `17N+5` generation windows. Other video models can be connected through visible ports, but the sample graph is not a universal adapter.
-- Plugin releases use `vMAJOR.MINOR.PATCH` Git tags and the [changelog](CHANGELOG.md). A project's *shot versions* are separate generation records. `v0.2.9` fixes aspect-coupled first-pass rounding and continuation seam colour on the original Swan backbone. `v1.9` is the only current template; `v1.0` remains only as an anchor.
+- Plugin releases use `vMAJOR.MINOR.PATCH` Git tags and the [changelog](CHANGELOG.md). A project's *shot versions* are separate generation records. `v0.2.9` fixes continuation seam stretching and colour jumps; use the `v1.9` workflow after upgrading.
 
 ## License and third-party content
 
