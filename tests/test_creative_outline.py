@@ -24,8 +24,8 @@ def sample_plan():
         },
         "generation_spec": {
             "aspect_ratio": "9:16 (Portrait Widescreen)",
-            "first_pass_megapixels": 0.5,
-            "second_pass_megapixels": 1.0,
+            "final_megapixels": 1.0,
+            "lowres_scale": 0.65,
             "pixel_alignment": 32,
         },
         "audio": {"timeline_frames": 480, "duration_seconds": 20.0},
@@ -78,7 +78,8 @@ class CreativeOutlineTests(unittest.TestCase):
         self.assertIn("MV 演绎节奏需要空镜", user_prompt)
         self.assertIn("视觉资产 A", user_prompt)
         self.assertIn("9:16 (Portrait Widescreen)", user_prompt)
-        self.assertIn('"second_pass_megapixels": 1.0', user_prompt)
+        self.assertIn('"final_megapixels": 1.0', user_prompt)
+        self.assertIn('"lowres_scale": 0.65', user_prompt)
         self.assertIn("完整自然语言", system_prompt)
         self.assertNotIn("internal-only", user_prompt)
         self.assertEqual(summary["shot_count"], 2)

@@ -8,7 +8,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT.parents[1] / "docs" / "MiniMaxH3_MV_项目工作台_xiaoyue.json"
-CURRENT_TEMPLATE = ROOT / "workflows" / "MiniMaxH3_MV_Planner_xiaoyue_MV工作台v1.0.json"
+CURRENT_TEMPLATE = ROOT / "workflows" / "MiniMaxH3_MV_Planner_xiaoyue_MV工作台v1.9.json"
 
 
 class UnifiedWorkbenchTests(unittest.TestCase):
@@ -17,7 +17,7 @@ class UnifiedWorkbenchTests(unittest.TestCase):
         nodes = {node["id"]: node for node in workflow["nodes"]}
         main = nodes[1002]
         self.assertEqual(main["properties"]["xiaoyue_mv_backbone_id"], 130)
-        self.assertEqual(len(main["outputs"]), 27)
+        self.assertEqual(len(main["outputs"]), 29)
         self.assertEqual(main["widgets_values_named"]["seed"], -1)
         self.assertFalse({2144, 2152} & nodes.keys())
         links = {link[0]: link for link in workflow["links"]}
@@ -88,13 +88,17 @@ class UnifiedWorkbenchTests(unittest.TestCase):
         self.assertEqual(
             [item["name"] for item in shot_input["outputs"][23:]],
             ["shot_audio_input_name", "input_subfolder",
-             "output_subfolder", "output_filename_stem"])
+             "output_subfolder", "output_filename_stem",
+             "final_megapixels", "lowres_scale"])
         self.assertNotIn("manual_prompt", [entry["name"] for entry in shot_input["inputs"]])
         self.assertNotIn("manual_prompt", shot_input.get("widgets_values_named", {}))
         self.assertNotIn("shot_id", [entry["name"] for entry in shot_input["inputs"]])
         self.assertNotIn("shot_id", shot_input.get("widgets_values_named", {}))
-        h3_nodes = [node for node in workflow["nodes"]
-                    if node["type"] == "MiniMaxH3ReferenceToVideo"]
+        h3_nodes = sorted(
+            (node for node in workflow["nodes"]
+             if node["type"] == "MiniMaxH3ReferenceToVideo"),
+            key=lambda node: node["id"],
+        )
         self.assertEqual(len(h3_nodes), 2)
         first_prompt = next(entry["link"] for entry in h3_nodes[0]["inputs"]
                             if entry["name"] == "prompt")
@@ -296,7 +300,7 @@ class UnifiedWorkbenchTests(unittest.TestCase):
         self.assertIn('data-field="replan-h3-max-frames"', source)
         self.assertIn("应用参数并重新打点", source)
         self.assertIn("镜头资产绑定", source)
-        self.assertIn("影片画幅与双采 MP", source)
+        self.assertIn("影片画幅、最终 MP 与一采潜空间比例", source)
 
     def test_shot_asset_picker_methods_belong_to_planner_editor(self):
         source = (ROOT / "web" / "mv_planner.js").read_text("utf-8")

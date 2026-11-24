@@ -293,8 +293,11 @@ def build_h3_prompt_input(plan: dict[str, Any], shot_id: str) -> dict[str, Any]:
         },
         "generation_spec": {
             "aspect_ratio": str(generation_spec.get("aspect_ratio") or "16:9 (Widescreen)"),
-            "first_pass_megapixels": float(generation_spec.get("first_pass_megapixels") or 0.4),
-            "second_pass_megapixels": float(generation_spec.get("second_pass_megapixels") or 0.9),
+            "final_megapixels": float(
+                generation_spec.get("final_megapixels")
+                or generation_spec.get("second_pass_megapixels")
+                or 0.9),
+            "lowres_scale": float(generation_spec.get("lowres_scale") or 0.65),
         },
         "whole_mv_context": str(creative_plan.get("overview") or ""),
         "shot": {

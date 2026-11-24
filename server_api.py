@@ -60,8 +60,8 @@ from .skill_library import (
 from .visual_assets import load_outline_visual_inputs, load_shot_visual_inputs
 from .shot_workflow import (
     canvas_backbone, canvas_workflow_fingerprint, compose_shot_workflow,
-    delivery_tail_start, history_video_descriptor, prepare_window_audio, window_fingerprint,
-    shot_seed_setting,
+    delivery_tail_start, generation_spec_fingerprint_variants,
+    history_video_descriptor, prepare_window_audio, window_fingerprint, shot_seed_setting,
 )
 
 
@@ -913,9 +913,10 @@ def _stable_shot_id(item: dict[str, Any]) -> str:
     return str(item.get("shot_uid") or f"legacy_{item.get('shot_id') or item.get('id') or ''}")
 
 
-def _shot_window_fingerprints(plan: dict[str, Any]) -> dict[str, dict[str, str]]:
+def _shot_window_fingerprints(plan: dict[str, Any]) -> dict[str, dict[str, Any]]:
     audio = str((plan.get("audio") or {}).get("fingerprint") or "")
     specification = plan.get("generation_spec") or {}
+    specification_variants = generation_spec_fingerprint_variants(specification)
     windows = [item for item in plan.get("generation_windows", [])
                if isinstance(item, dict) and item.get("shot_id")]
     by_label = {str(item.get("editorial_label") or ""): item for item in windows}
@@ -923,14 +924,29 @@ def _shot_window_fingerprints(plan: dict[str, Any]) -> dict[str, dict[str, str]]
         label = str(window.get("continuity_parent_label") or "")
         return _stable_shot_id(by_label[label]) if label in by_label else ""
 
-    return {
-        _stable_shot_id(window): {
-            "current": window_fingerprint(
-                window, specification, audio, parent_uid=parent_uid(window)),
-            "legacy": window_fingerprint(window, specification, audio, legacy=True),
+    result = {}
+    for window in windows:
+        current = window_fingerprint(
+            window, specification, audio, parent_uid=parent_uid(window))
+        legacy = window_fingerprint(window, specification, audio, legacy=True)
+        result[_stable_shot_id(window)] = {
+            "current": current,
+            "legacy": legacy,
+            "current_compatible": [
+                value for value in (
+                    window_fingerprint(
+                        window, variant, audio, parent_uid=parent_uid(window))
+                    for variant in specification_variants[1:])
+                if value != current
+            ],
+            "legacy_compatible": [
+                value for value in (
+                    window_fingerprint(window, variant, audio, legacy=True)
+                    for variant in specification_variants[1:])
+                if value != legacy
+            ],
         }
-        for window in windows
-    }
+    return result
 
 
 def _require_current_window_rule(plan: dict[str, Any]) -> None:

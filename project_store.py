@@ -135,20 +135,38 @@ def normalize_generation_spec(value: dict[str, Any] | None) -> dict[str, Any]:
     if aspect_ratio not in _ASPECT_RATIOS:
         raise ValueError("影片长宽比不是 ResolutionSelector 支持的官方档位。")
 
-    def megapixels(key: str, default: float) -> float:
-        requested = float(source.get(key, default))
+    def megapixels(value: Any, label: str, default: float) -> float:
+        requested = float(default if value is None else value)
         if not math.isfinite(requested) or requested < 0.1 or requested > 16.0:
-            raise ValueError(f"{key} 必须在 0.1–16.0 MP 之间。")
+            raise ValueError(f"{label} 必须在 0.1–16.0 MP 之间。")
         return round(requested, 3)
 
-    first_pass = megapixels("first_pass_megapixels", 0.4)
-    second_pass = megapixels("second_pass_megapixels", 0.9)
-    if second_pass < first_pass:
-        raise ValueError("二采目标 MP 不能低于一采目标 MP。")
+    # v0.2 stores one authoritative final canvas plus SelfLift's reverse
+    # low-resolution ratio. Older projects are migrated without losing their
+    # approximate first/second-pass relationship.
+    final_value = source.get("final_megapixels")
+    if final_value is None:
+        final_value = source.get("second_pass_megapixels")
+    final_megapixels = megapixels(final_value, "最终目标 MP", 0.9)
+
+    scale_value = source.get("lowres_scale")
+    if scale_value is None:
+        first_value = source.get("first_pass_megapixels")
+        second_value = source.get("second_pass_megapixels")
+        if first_value is not None and second_value is not None:
+            first = megapixels(first_value, "旧版一采目标 MP", 0.4)
+            second = megapixels(second_value, "旧版二采目标 MP", 0.9)
+            scale_value = math.sqrt(first / second)
+        else:
+            scale_value = 0.65
+    lowres_scale = float(scale_value)
+    if (not math.isfinite(lowres_scale)
+            or lowres_scale < 0.25 or lowres_scale > 0.95):
+        raise ValueError("一采潜空间比例必须在 0.25–0.95 之间。")
     return {
         "aspect_ratio": aspect_ratio,
-        "first_pass_megapixels": first_pass,
-        "second_pass_megapixels": second_pass,
+        "final_megapixels": final_megapixels,
+        "lowres_scale": round(lowres_scale, 4),
         "pixel_alignment": 32,
     }
 

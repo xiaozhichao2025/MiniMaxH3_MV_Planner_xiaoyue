@@ -32,8 +32,8 @@ def manifest(*, project_id="project-a", code="PA", master="master-1",
         "assets": assets or [],
         "generation_spec": generation_spec or {
             "aspect_ratio": "16:9 (Widescreen)",
-            "first_pass_megapixels": 0.4,
-            "second_pass_megapixels": 0.9,
+            "final_megapixels": 0.9,
+            "lowres_scale": 0.65,
             "pixel_alignment": 32,
         },
         "skill_templates": skill_templates or {
@@ -153,8 +153,8 @@ class ProjectSyncTests(unittest.TestCase):
         updated = sync.reconcile_project_state(
             manifest(generation_spec={
                 "aspect_ratio": "9:16 (Portrait Widescreen)",
-                "first_pass_megapixels": 0.5,
-                "second_pass_megapixels": 1.0,
+                "final_megapixels": 1.0,
+                "lowres_scale": 0.65,
                 "pixel_alignment": 32,
             }),
             plan,

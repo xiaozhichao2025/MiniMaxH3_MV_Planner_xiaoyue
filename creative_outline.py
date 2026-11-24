@@ -223,8 +223,11 @@ def build_outline_input(plan: dict[str, Any]) -> dict[str, Any]:
         },
         "generation_spec": {
             "aspect_ratio": str(generation_spec.get("aspect_ratio") or "16:9 (Widescreen)"),
-            "first_pass_megapixels": float(generation_spec.get("first_pass_megapixels") or 0.4),
-            "second_pass_megapixels": float(generation_spec.get("second_pass_megapixels") or 0.9),
+            "final_megapixels": float(
+                generation_spec.get("final_megapixels")
+                or generation_spec.get("second_pass_megapixels")
+                or 0.9),
+            "lowres_scale": float(generation_spec.get("lowres_scale") or 0.65),
             "pixel_alignment": int(generation_spec.get("pixel_alignment") or 32),
         },
         "music_timeline": {

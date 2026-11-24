@@ -500,6 +500,19 @@ def compose_shot_workflow(ui: dict[str, Any], node_info: dict[str, Any], *,
     input_subfolder, _ = _relative_parts(audio_input_name, "镜头音频输入路径")
     output_subfolder, output_filename_stem = _relative_parts(
         output_prefix, "镜头视频输出前缀")
+    final_megapixels = float(
+        generation_spec.get("final_megapixels")
+        or generation_spec.get("second_pass_megapixels")
+        or 0.9
+    )
+    lowres_scale = generation_spec.get("lowres_scale")
+    if lowres_scale is None:
+        first = float(generation_spec.get("first_pass_megapixels") or 0.4)
+        second = float(generation_spec.get("second_pass_megapixels") or final_megapixels)
+        lowres_scale = (first / second) ** 0.5 if second > 0 else 0.65
+    lowres_scale = float(lowres_scale)
+    legacy_first_megapixels = round(
+        final_megapixels * lowres_scale * lowres_scale, 3)
     # Replace only the shot-data source at queue time. Every downstream node
     # and its explicit connections remain the user's live canvas graph.
     audio = _add(graph, 10000, "LoadAudio", audio=audio_input_name)
@@ -521,8 +534,8 @@ def compose_shot_workflow(ui: dict[str, Any], node_info: dict[str, Any], *,
     graph["130"] = {"class_type": "Xiaoyue_MV_RuntimeShot", "inputs": {
         "h3_prompt": prompt, "shot_audio": audio,
         "aspect_ratio": generation_spec["aspect_ratio"],
-        "first_pass_megapixels": float(generation_spec["first_pass_megapixels"]),
-        "second_pass_megapixels": float(generation_spec["second_pass_megapixels"]),
+        "first_pass_megapixels": legacy_first_megapixels,
+        "second_pass_megapixels": final_megapixels,
         "raw_seconds": raw_frames / 24.0, "raw_frames": raw_frames,
         "seed": actual_seed, "output_prefix": output_prefix,
         "reference_manifest_json": json.dumps({
@@ -538,6 +551,8 @@ def compose_shot_workflow(ui: dict[str, Any], node_info: dict[str, Any], *,
         "input_subfolder": input_subfolder,
         "output_subfolder": output_subfolder,
         "output_filename_stem": output_filename_stem,
+        "final_megapixels": final_megapixels,
+        "lowres_scale": lowres_scale,
     }}
     graph = _prune_api_ancestry(graph)
     _validate_routed_h3_passes(graph)
@@ -567,6 +582,41 @@ def compose_shot_workflow(ui: dict[str, Any], node_info: dict[str, Any], *,
 
 def workflow_fingerprint(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def generation_spec_fingerprint_variants(
+        generation_spec: dict[str, Any]) -> list[dict[str, Any]]:
+    """Return schema-equivalent sizing specs for version compatibility.
+
+    v0.2 replaced the independently entered first/second-pass megapixels with
+    final megapixels plus SelfLift's linear low-resolution scale.  Existing
+    versions recorded the old JSON field names in their window fingerprint.
+    Reconstruct that exact legacy representation so a schema-only migration
+    does not invalidate an otherwise unchanged continuation chain.
+    """
+    current = copy.deepcopy(generation_spec)
+    variants = [current]
+    if ("final_megapixels" not in current
+            and "lowres_scale" not in current):
+        return variants
+    try:
+        final_megapixels = float(
+            current.get("final_megapixels")
+            or current.get("second_pass_megapixels"))
+        lowres_scale = float(current.get("lowres_scale"))
+    except (TypeError, ValueError):
+        return variants
+    if final_megapixels <= 0 or lowres_scale <= 0:
+        return variants
+    legacy = copy.deepcopy(current)
+    legacy.pop("final_megapixels", None)
+    legacy.pop("lowres_scale", None)
+    legacy["first_pass_megapixels"] = round(
+        final_megapixels * lowres_scale * lowres_scale, 3)
+    legacy["second_pass_megapixels"] = final_megapixels
+    if legacy != current:
+        variants.append(legacy)
+    return variants
 
 
 def window_fingerprint(window: dict[str, Any], generation_spec: dict[str, Any],

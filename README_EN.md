@@ -10,9 +10,17 @@ For long takes, **continuation shots** derive guide frames from a selected paren
 
 The workbench **plans, organizes, and drives** each shot through visible output ports. You still choose and wire the downstream model, sampler, LoRAs, upscaler, and save node. This repository contains the plugin, two bundled Skills, and one editable MiniMax H3 example workflow; it contains **no models, songs, or generated footage**.
 
-Current plugin version: **v0.1.4 preview**. The `v1.0` in the example workflow filename is that template's revision, not the plugin version.
+Current plugin version: **v0.2.9 preview**. The `v1.9` in the example workflow filename is that template's revision, not the plugin version.
 
-## What's new in v0.1.4
+## What's new in v0.2.9
+
+- **Fixes continuation seam stretching:** the old formula rounded first-pass width and height independently after applying `lowres_scale`, which could produce different horizontal and vertical scale factors. The shorter final axis now establishes one grid scale and the other axis is coupled to the final aspect ratio; `1280×736 / 0.6667` changes from `864×480` to `832×480`.
+- **Fixes continuation seam colour jumps:** the final frame of the parent's 22-frame overlap is the colour reference, and the first delivered frame after the new segment's overlap is the source baseline. One fixed `reinhard_lab / target_frame` transform is shared by the segment; it is not per-frame grading. The template defaults to `0.75`, and users can tune `0.5–0.75` for live-action, cartoon, or flat-colour material.
+- **The original quality backbone stays intact:** original Swan 6+2, dual H3 injectors and LoRA stacks, shared noise, Swan SelfLift latent lifting, and one clean Guide batch remain. `SelfLiftSplit spatial_tiles` and extra Guide image noise are not used.
+- **Load v1.9 after upgrading:** the new workflow adds final-MP-to-first-pass-scale conversion and a continuation-only colour-transfer switch. Old canvases cannot acquire those nodes and dynamic links automatically and may fail with missing inputs during generation.
+- **Only two anchors remain:** `v1.9` is the current runnable template with backbone `v2.10`. `v1.0` is retained only as the original two-pass anchor and is not compatible with the current plugin. The erroneous diagnostic `v1.1–v1.8` files are removed and are not part of the Git release.
+
+### What's new in v0.1.4
 
 - **Usable first drafts are no longer discarded:** only empty output, a wrong shot ID/mode, or completely missing core structure remains a hard failure. Other quality concerns are shown for human review.
 - **No forced audio-driven performance when singing is disabled:** non-singing shots no longer retry merely because `<Audio N>` is absent from performance or lip-movement descriptions.
@@ -40,7 +48,7 @@ See [CHANGELOG.md](CHANGELOG.md) for the complete release history.
 
 ## Where to find the example workflow
 
-The repository contains **one editable example workflow**: [MiniMax H3 MV Workbench JSON](workflows/MiniMaxH3_MV_Planner_xiaoyue_MV工作台v1.0.json). After installation, it is at `ComfyUI/custom_nodes/MiniMaxH3_MV_Planner_xiaoyue/workflows/MiniMaxH3_MV_Planner_xiaoyue_MV工作台v1.0.json`. Drag the JSON onto the ComfyUI canvas or open it with “Load Workflow.” If ComfyUI reports missing nodes, install them from the dependency list below and restart. The workbench plans and drives the project; the downstream H3 graph is a replaceable wiring example.
+The current editable example is [MiniMax H3 MV Workbench v1.9 JSON](workflows/MiniMaxH3_MV_Planner_xiaoyue_MV工作台v1.9.json). After installation, it is at `ComfyUI/custom_nodes/MiniMaxH3_MV_Planner_xiaoyue/workflows/MiniMaxH3_MV_Planner_xiaoyue_MV工作台v1.9.json`. Reload this `v1.9` after upgrading; an already-open old canvas cannot acquire the new size-conversion and continuation-colour wiring automatically. `v1.0` remains only as an original anchor and must not be used for current generation.
 
 Video tutorials (Chinese): [Bilibili](https://www.bilibili.com/video/BV1EEnX6YEFm/) · [YouTube](https://youtu.be/DhGjpkrX0Gg).
 
@@ -50,7 +58,7 @@ These are screenshots from an actual project; the music and visual assets shown 
 
 ### ① Project setup
 
-![Project setup with aspect ratio, pass sizes, Skills, audio and assets](assets/screenshots/01-project-setup.png)
+![Project setup with aspect ratio, final size, latent scale, Skills, audio and assets](assets/screenshots/01-project-setup.png)
 
 ### ② MV workbench
 
@@ -60,13 +68,13 @@ These are screenshots from an actual project; the music and visual assets shown 
 
 ![Final review desk with preview, subtitles and multitrack timeline](assets/screenshots/03-preview-desk.png)
 
-- **Project setup** stores aspect ratio, first/second-pass MP targets, the original track, optional time-aligned vocals, lyrics/subtitles, and shared assets. Project data lives under ComfyUI's `input/xiaoyue_mv_projects/`, outside this repository.
+- **Project setup** stores aspect ratio, final target MP, first-pass latent scale, the original track, optional time-aligned vocals, lyrics/subtitles, and shared assets. Project data lives under ComfyUI's `input/xiaoyue_mv_projects/`, outside this repository.
 - **MV workbench** plans shots around the soundtrack and lets you adjust hard cuts, continuations, and dissolves on a 24 fps absolute-frame timeline while calculating `17N+5` generation windows and bleed. Correct lyrics, bind per-shot assets, generate the overall visual outline and individual H3 prompts, then generate selected shots in order. Each successful take keeps its own frame points, seed, and continuation-parent relationship.
 - **Final review desk** selects a take for each shot and previews the assembled MV using the original soundtrack; individual generated clips are muted. Export either a caption-free movie plus SRT, or one package containing FCP7 XML, a native Premiere `.prproj`, full source files, the soundtrack, subtitles, and edit markers. The timeline is pre-trimmed to the selected hard cuts and continuations, with upper-track opacity fades for dissolves; full media remains available when extending an edit. Jianying can import the packaged `.prproj` through its Premiere-project import route without a Premiere conversion step.
 
 ## From soundtrack to deliverable
 
-1. **Set up the project:** import the original song, lyrics/subtitles, and character or scene assets; choose aspect ratio and pass sizes.
+1. **Set up the project:** import the original song, lyrics/subtitles, and character or scene assets; choose aspect ratio, final MP, and the first-pass latent scale.
 2. **Plan the shots:** place cuts and connections on an absolute-frame, 24 fps timeline. The workbench calculates `17N+5` generation lengths plus guide/bleed frames; the overall outline and per-shot prompts use the same plan.
 3. **Generate and select:** run shots through your own graph. Successful takes retain their seed, original frame points, and continuation-parent take; failures do not masquerade as usable versions.
 4. **Review and deliver:** select takes on a multitrack timeline, preview them with the original song and subtitles, then export a caption-free movie plus SRT or an FCP7 XML + PR project package with a pre-edited hard-cut, continuation, and dissolve timeline, full source files, and edit markers.
@@ -77,7 +85,7 @@ These are screenshots from an actual project; the music and visual assets shown 
 
 1. Clone [this repository](https://github.com/xiaozhichao2025/MiniMaxH3_MV_Planner_xiaoyue) into `ComfyUI/custom_nodes/MiniMaxH3_MV_Planner_xiaoyue`.
 2. Install the parts you intend to run using the [custom-node](#custom-nodes-used-by-the-example-workflow), [model](#models-selected-in-the-example-workflow), and [LoRA](#loras-selected-in-the-example-workflow) lists below. The planner and the sample H3 generation graph are separate layers: planning alone does not require every model used by the sample graph.
-3. Restart ComfyUI and load the [example workflow](workflows/MiniMaxH3_MV_Planner_xiaoyue_MV工作台v1.0.json). In the main node, select **① New/open project**, import the original track and save. Run the workflow once to register the current project's planning UI, then use **② MV workbench → ③ Final review desk**.
+3. Restart ComfyUI and load the [v1.9 example workflow](workflows/MiniMaxH3_MV_Planner_xiaoyue_MV工作台v1.9.json). In the main node, select **① New/open project**, import the original track and save. Run the workflow once to register the current project's planning UI, then use **② MV workbench → ③ Final review desk**.
 
 Install only what you need: **project planning** does not require the H3 generation models; **AI outline/prompt generation** needs a working QwenTE inference chain and its models; **running the example video graph** additionally needs the video extensions, H3 models, and LoRAs actually enabled in that graph; **automatic subtitle recognition** alone needs optional local ASR.
 
@@ -138,7 +146,7 @@ For audio-to-subtitle recognition, install [Easy Media](https://github.com/yolai
 
 ## Connect your own generation workflow
 
-The main node exposes the per-shot prompt, soundtrack window, aspect ratio, first/second-pass MP targets, exact `raw_frames`, seed, continuation guide, asset manifest, and output path/name prefix. The separate “MV 本镜附件槽位” asset router maps images, videos, and audio to reference slots. Wire the relevant ports to your own single- or two-pass graph. The plugin does not secretly rewrite downstream node parameters. Hover over a port or read the example workflow's interface note for its exact meaning.
+The main node exposes the per-shot prompt, soundtrack window, aspect ratio, final target MP, first-pass latent scale, exact `raw_frames`, seed, continuation guide, asset manifest, and output path/name prefix. Legacy first/second-pass MP ports remain only for the `v1.0` workflow. The separate asset router maps images, videos, and audio to reference slots. Hover over a port or read the example workflow's interface note for exact meanings.
 
 Each generation saves the full model window. Guide frames and tail bleed stay recorded with the take; the review desk trims only after a final take is chosen. Continuations must follow the actual parent-take chain. Editing the timeline does not silently rewrite old takes or their original frame points. The final preview/export uses the original track once rather than layering the generated clips' audio.
 
@@ -154,7 +162,7 @@ Both bundled and user-added Skills are read **only from this plugin's `skills/` 
 - Source audio, assets, plans, and shot versions remain in ComfyUI's project-data directory. Updating or cloning this plugin does **not** upload them. Before sharing a workflow, inspect node values, asset paths, and credentials yourself.
 - The published template excludes the author's private LAN ASR provider and service configuration. Use the local Whisper provider, or leave ASR disconnected and edit/import lyrics manually.
 - The editor currently uses a **24 fps** timeline. The example H3 graph uses `17N+5` generation windows. Other video models can be connected through visible ports, but the sample graph is not a universal adapter.
-- Plugin releases use `vMAJOR.MINOR.PATCH` Git tags and the [changelog](CHANGELOG.md). A project's *shot versions* are separate generation records, not Git versions. `v0.1.0` was the first private preview snapshot; `v0.1.1` adds guarded project deletion, disk cleanup, and the native-file-picker cancellation fix; `v0.1.2` fixes V3 `SaveVideo` execution on mixed ComfyUI revisions; `v0.1.3` fixes old widget values shifting after the `CreateVideo` schema upgrade; `v0.1.4` downgrades content-quality prompt checks to human-review warnings. Dependency and import compatibility checks remain ongoing.
+- Plugin releases use `vMAJOR.MINOR.PATCH` Git tags and the [changelog](CHANGELOG.md). A project's *shot versions* are separate generation records. `v0.2.9` fixes aspect-coupled first-pass rounding and continuation seam colour on the original Swan backbone. `v1.9` is the only current template; `v1.0` remains only as an anchor.
 
 ## License and third-party content
 

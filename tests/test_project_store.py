@@ -49,8 +49,8 @@ class ProjectStoreTests(unittest.TestCase):
         self.assertEqual(manifest["revision"], 1)
         self.assertEqual(manifest["generation_spec"], {
             "aspect_ratio": "16:9 (Widescreen)",
-            "first_pass_megapixels": 0.4,
-            "second_pass_megapixels": 0.9,
+            "final_megapixels": 0.9,
+            "lowres_scale": 0.65,
             "pixel_alignment": 32,
         })
 
@@ -252,15 +252,16 @@ class ProjectStoreTests(unittest.TestCase):
             self.roots,
             generation_spec={
                 "aspect_ratio": "9:16 (Portrait Widescreen)",
-                "first_pass_megapixels": 0.5,
-                "second_pass_megapixels": 1.2,
+                "final_megapixels": 1.2,
+                "lowres_scale": 0.6,
             },
         )
         self.assertEqual(
             project["manifest"]["generation_spec"]["aspect_ratio"],
             "9:16 (Portrait Widescreen)",
         )
-        self.assertEqual(project["manifest"]["generation_spec"]["second_pass_megapixels"], 1.2)
+        self.assertEqual(project["manifest"]["generation_spec"]["final_megapixels"], 1.2)
+        self.assertEqual(project["manifest"]["generation_spec"]["lowres_scale"], 0.6)
 
         with self.assertRaisesRegex(ValueError, "ResolutionSelector"):
             store.upsert_project(
@@ -290,18 +291,29 @@ class ProjectStoreTests(unittest.TestCase):
         self.assertEqual(recorded["manifest"]["skill_templates"], expected)
         reopened = store.load_project(self.project_id, self.roots)
         self.assertEqual(reopened["manifest"]["skill_templates"], expected)
-        with self.assertRaisesRegex(ValueError, "二采目标 MP"):
+        with self.assertRaisesRegex(ValueError, "潜空间比例"):
             store.upsert_project(
                 "4c794b05-15d5-4c80-b819-b2b8f885f32a",
-                "无效双采",
+                "无效潜空间比例",
                 "BAD-MP",
                 self.roots,
                 generation_spec={
                     "aspect_ratio": "16:9 (Widescreen)",
-                    "first_pass_megapixels": 1.0,
-                    "second_pass_megapixels": 0.5,
+                    "final_megapixels": 0.9,
+                    "lowres_scale": 1.0,
                 },
             )
+
+    def test_legacy_two_pass_megapixels_migrate_to_final_canvas_and_scale(self):
+        normalized = store.normalize_generation_spec({
+            "aspect_ratio": "16:9 (Widescreen)",
+            "first_pass_megapixels": 0.4,
+            "second_pass_megapixels": 0.9,
+        })
+        self.assertEqual(normalized["final_megapixels"], 0.9)
+        self.assertAlmostEqual(normalized["lowres_scale"], 0.6667, places=4)
+        self.assertNotIn("first_pass_megapixels", normalized)
+        self.assertNotIn("second_pass_megapixels", normalized)
 
     def test_project_audio_source_cannot_escape_project_directory(self):
         store.upsert_project(

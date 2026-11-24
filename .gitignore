@@ -29,6 +29,7 @@
 
 /workflows/*
 !/workflows/MiniMaxH3_MV_Planner_xiaoyue_MV工作台v1.0.json
+!/workflows/MiniMaxH3_MV_Planner_xiaoyue_MV工作台v1.9.json
 
 __pycache__/
 *.py[cod]
@@ -37,6 +38,10 @@ __pycache__/
 .env
 .env.*
 local_config.json
+/asr_api.py
+/local_extension.py
+/tests/test_asr_api.py
+/tests/test_local_extension.py
 *.pem
 *.key
 *.p12

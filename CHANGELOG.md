@@ -1,14 +1,30 @@
 # 更新记录 / Changelog
 
-插件版本使用语义化 `vMAJOR.MINOR.PATCH` Git 标签。样例工作流文件名的 `v1.0` 仅代表模板修订；项目中的 `v1/v2` 镜头版本是生成素材记录，三者互不混用。
+插件版本使用语义化 `vMAJOR.MINOR.PATCH` Git 标签。样例工作流文件名的 `v1.9` 仅代表模板修订；项目中的 `v1/v2` 镜头版本是生成素材记录，三者互不混用。
 
-Plugin versions use `vMAJOR.MINOR.PATCH` Git tags. The example workflow's `v1.0` is a template revision; per-shot take numbers are project data, not plugin releases.
+Plugin versions use `vMAJOR.MINOR.PATCH` Git tags. The example workflow's `v1.9` is a template revision; per-shot take numbers are project data, not plugin releases.
 
 ## 未发布 / Unreleased
 
 - 暂无。
 
 - None.
+
+## v0.2.9 · 2026-11-24 · 一采网格长宽比耦合取整 / Aspect-coupled first-pass grid
+
+- `v1.9` 解决两个续写接缝问题：一是宽高独立对齐 32 后横纵倍率不同造成的瞬间拉伸；二是新段与父段颜色统计不同造成的轻微跳色。
+- 一采尺寸先用最终短边和 `lowres_scale` 确定唯一 32 网格倍率，再按最终长宽比耦合另一边。最终 `1280×736`、比例 `0.6667` 时由错误的 `864×480` 改为 `832×480`。
+- 调色以前段末 22 帧的最后一帧为参考，以新段去除重叠区后的第一帧为基准，使用整段共用的 `reinhard_lab / target_frame` 固定变换。模板默认 `0.75`；真人、卡通和平涂素材可按实际结果在 `0.5–0.75` 之间调整，不使用逐帧调色。
+- 原始 Swan 6+2、双 H3、双 LoRA、共用噪声、Swan SelfLift 和整批干净 Guide 保持不变。生成骨干标记为 `v2.10`。
+- **升级要求**：必须重新加载 `v1.9`。新模板增加“最终目标 MP → 一采潜空间比例换算”和“仅续写时启用调色”的节点与动态接线；旧画布不会自动升级，可能因缺少输入或连线而在生成时报错。
+- 仅保留 `v1.0` 初代锚点与当前 `v1.9`。`v1.0` 只作备份，不适配当前插件；错误诊断过程 `v1.1–v1.8` 已删除，不进入 Git 发布包。
+
+- `v1.9` fixes two continuation-seam defects: momentary stretching from independently rounded horizontal/vertical scales, and subtle colour jumps between a parent and its generated continuation.
+- The shorter final axis and `lowres_scale` establish one 32-pixel grid scale; the other axis is coupled to the final aspect ratio. For `1280×736` at `0.6667`, this changes the incorrect `864×480` to `832×480`.
+- Colour transfer uses the final frame of the parent's 22-frame overlap as reference and the first delivered new frame as baseline. One fixed `reinhard_lab / target_frame` transform covers the segment. The template defaults to `0.75`; live-action, cartoon, and flat-colour footage can be tuned between `0.5–0.75`. It is not per-frame grading.
+- Original Swan 6+2, dual H3 injectors and LoRA stacks, shared noise, Swan SelfLift, and one clean Guide batch remain unchanged. The visible backbone is `v2.10`.
+- **Upgrade requirement:** reload `v1.9`. The new template adds final-MP-to-first-pass-scale conversion plus a continuation-only colour-transfer switch. Old canvases cannot gain those nodes and dynamic links automatically and may fail with missing inputs or wiring.
+- Only the original `v1.0` anchor and current `v1.9` remain. `v1.0` is backup-only and incompatible with the current plugin; erroneous diagnostic `v1.1–v1.8` files are removed from the Git release.
 
 ## v0.1.4 · 2026-11-15 · 提示词自检降级 / Softer prompt review
 

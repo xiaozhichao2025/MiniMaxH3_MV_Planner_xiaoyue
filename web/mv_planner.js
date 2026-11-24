@@ -6,7 +6,8 @@ const NODE_NAME = "MiniMaxH3_MV_Planner_xiaoyue";
 const SHOT_INPUT_NODE_NAME = "Xiaoyue_MV_ShotInput";
 const PREVIEW_NODE_NAME = "Xiaoyue_MV_PreviewDesk";
 const PLANNER_OUTPUT_COUNT = 8;
-const SHOT_OUTPUT_COUNT = 19;
+const SHOT_OUTPUT_COUNT = 21;
+const LAN_ASR_PROVIDER_NODE_NAME = "Xiaoyue_LAN_ASR_Provider";
 const LOCAL_WHISPER_PROVIDER_NODE_NAME = "Xiaoyue_Local_Whisper_Provider";
 const QWEN_MV_REASONING_PROVIDER_NODE_NAME = "Xiaoyue_QwenTE_MV_Reasoning_Provider_xiaoyue";
 const LEGACY_PROJECT_NODE_NAME = "MiniMaxH3_MV_Project_xiaoyue";
@@ -34,8 +35,8 @@ const ASPECT_RATIO_OPTIONS = [
 ];
 const DEFAULT_GENERATION_SPEC = Object.freeze({
     aspect_ratio: "16:9 (Widescreen)",
-    first_pass_megapixels: 0.4,
-    second_pass_megapixels: 0.9,
+    final_megapixels: 0.9,
+    lowres_scale: 0.65,
     pixel_alignment: 32,
 });
 const DEFAULT_SKILL_TEMPLATES = Object.freeze({
@@ -57,18 +58,24 @@ function normalizeGenerationSpec(value) {
     const source = value && typeof value === "object" ? value : {};
     const aspectRatio = ASPECT_RATIO_OPTIONS.includes(source.aspect_ratio)
         ? source.aspect_ratio : DEFAULT_GENERATION_SPEC.aspect_ratio;
-    const firstPass = Math.max(0.1, Math.min(
+    const finalMegapixels = Math.max(0.1, Math.min(
         16,
-        Number(source.first_pass_megapixels) || DEFAULT_GENERATION_SPEC.first_pass_megapixels,
+        Number(source.final_megapixels ?? source.second_pass_megapixels)
+            || DEFAULT_GENERATION_SPEC.final_megapixels,
     ));
-    const secondPass = Math.max(firstPass, Math.min(
-        16,
-        Number(source.second_pass_megapixels) || DEFAULT_GENERATION_SPEC.second_pass_megapixels,
-    ));
+    let migratedScale = Number(source.lowres_scale);
+    if (!Number.isFinite(migratedScale)) {
+        const legacyFirst = Number(source.first_pass_megapixels);
+        const legacySecond = Number(source.second_pass_megapixels);
+        migratedScale = legacyFirst > 0 && legacySecond > 0
+            ? Math.sqrt(legacyFirst / legacySecond)
+            : DEFAULT_GENERATION_SPEC.lowres_scale;
+    }
+    const lowresScale = Math.max(0.25, Math.min(0.95, migratedScale));
     return {
         aspect_ratio: aspectRatio,
-        first_pass_megapixels: Number(firstPass.toFixed(3)),
-        second_pass_megapixels: Number(secondPass.toFixed(3)),
+        final_megapixels: Number(finalMegapixels.toFixed(3)),
+        lowres_scale: Number(lowresScale.toFixed(4)),
         pixel_alignment: 32,
     };
 }
@@ -141,6 +148,9 @@ function connectedSourceNode(plannerNode, inputName) {
 function connectedSubtitleProvider(plannerNode) {
     const sourceNode = connectedSourceNode(plannerNode, "asr_provider");
     const sourceType = sourceNode?.comfyClass || sourceNode?.type;
+    if (sourceType === LAN_ASR_PROVIDER_NODE_NAME) {
+        return { kind: "lan", label: "局域网 ASR Provider", sourceNode };
+    }
     if (sourceType === LOCAL_WHISPER_PROVIDER_NODE_NAME) {
         return { kind: "local_whisper", label: "本地 Whisper Provider", sourceNode };
     }
@@ -153,6 +163,23 @@ function connectedReasoningProviderNode(plannerNode) {
     return sourceType === QWEN_MV_REASONING_PROVIDER_NODE_NAME ? sourceNode : null;
 }
 
+function lanAsrSettings(provider) {
+    const sourceNode = provider?.sourceNode;
+    return {
+        endpoint: widgetValue(sourceNode, "endpoint"),
+        mode: widgetValue(sourceNode, "mode", "transcribe"),
+        source_language: widgetValue(sourceNode, "source_language", "auto"),
+        target_language: widgetValue(sourceNode, "target_language"),
+        segment_seconds: Number(widgetValue(sourceNode, "segment_seconds", 5)),
+        api_key: widgetValue(sourceNode, "api_key"),
+        verify_tls: Boolean(widgetValue(sourceNode, "verify_tls", false)),
+        timeout_seconds: Math.max(
+            600,
+            Number(widgetValue(sourceNode, "timeout_seconds", 600)) || 600,
+        ),
+    };
+}
+
 function localWhisperSettings(provider) {
     const sourceNode = provider?.sourceNode;
     return {
@@ -163,6 +190,9 @@ function localWhisperSettings(provider) {
 }
 
 function providerStatusLabel(provider) {
+    if (provider?.kind === "lan") {
+        return "已连接局域网 ASR Provider；时间戳为音频窗口级。";
+    }
     if (provider?.kind === "local_whisper") {
         return "已连接本地 Whisper Provider；模型只会在点击识别时加载。";
     }
@@ -991,13 +1021,13 @@ class ProjectEditor {
                                 </select>
                                 <small>直接对应 ResolutionSelector 的官方画幅档。</small>
                             </label>
-                            <label>一采目标 MP
-                                <input data-field="first-pass-megapixels" type="number" min="0.1" max="16" step="0.1" inputmode="decimal">
-                                <small>默认 0.4 MP，建立基础构图与运动。</small>
+                            <label>最终目标 MP
+                                <input data-field="final-megapixels" type="number" min="0.1" max="16" step="0.1" inputmode="decimal">
+                                <small>唯一权威的最终画布尺寸；默认 0.9 MP。</small>
                             </label>
-                            <label>二采目标 MP
-                                <input data-field="second-pass-megapixels" type="number" min="0.1" max="16" step="0.1" inputmode="decimal">
-                                <small>默认 0.9 MP，不得低于一采；后续传给 H3 Latent Upscaler。</small>
+                            <label>一采潜空间比例
+                                <input data-field="lowres-scale" type="number" min="0.25" max="0.95" step="0.01" inputmode="decimal">
+                                <small>默认 0.65；SelfLift 从最终 latent 反推一采网格，避免两次独立取整。</small>
                             </label>
                         </fieldset>
                         <fieldset class="xiaoyue-project-generation-spec xiaoyue-project-skill-templates">
@@ -1155,10 +1185,10 @@ class ProjectEditor {
         this.field("aspect-ratio").addEventListener("change", (event) => {
             this.draft.generation_spec.aspect_ratio = event.target.value;
         });
-        this.field("first-pass-megapixels").addEventListener("change", () => {
+        this.field("final-megapixels").addEventListener("change", () => {
             this.updateDraftGenerationSpec();
         });
-        this.field("second-pass-megapixels").addEventListener("change", () => {
+        this.field("lowres-scale").addEventListener("change", () => {
             this.updateDraftGenerationSpec();
         });
         for (const [stage, fieldName] of [
@@ -1361,10 +1391,10 @@ class ProjectEditor {
             h3_max_frames: h3Frames,
         };
         this.field("aspect-ratio").value = this.draft.generation_spec.aspect_ratio;
-        this.field("first-pass-megapixels").value = String(
-            this.draft.generation_spec.first_pass_megapixels);
-        this.field("second-pass-megapixels").value = String(
-            this.draft.generation_spec.second_pass_megapixels);
+        this.field("final-megapixels").value = String(
+            this.draft.generation_spec.final_megapixels);
+        this.field("lowres-scale").value = String(
+            this.draft.generation_spec.lowres_scale);
         this.renderSkillTemplateOptions();
         this.field("project-lyrics").value = this.draft.lyrics.source_text || "";
         this.renderAudioSources();
@@ -1444,12 +1474,12 @@ class ProjectEditor {
     updateDraftGenerationSpec() {
         const requested = normalizeGenerationSpec({
             aspect_ratio: this.field("aspect-ratio").value,
-            first_pass_megapixels: this.field("first-pass-megapixels").value,
-            second_pass_megapixels: this.field("second-pass-megapixels").value,
+            final_megapixels: this.field("final-megapixels").value,
+            lowres_scale: this.field("lowres-scale").value,
         });
         this.draft.generation_spec = requested;
-        this.field("first-pass-megapixels").value = String(requested.first_pass_megapixels);
-        this.field("second-pass-megapixels").value = String(requested.second_pass_megapixels);
+        this.field("final-megapixels").value = String(requested.final_megapixels);
+        this.field("lowres-scale").value = String(requested.lowres_scale);
     }
 
     async loadProjects() {
@@ -2586,13 +2616,13 @@ class PlannerEditor {
                                         ${ASPECT_RATIO_OPTIONS.map((value) => `<option value="${value}">${value}</option>`).join("")}
                                     </select>
                                 </label>
-                                <label>一采目标 MP
-                                    <input data-field="project-first-pass-megapixels" type="number" min="0.1" max="16" step="0.1" inputmode="decimal">
+                                <label>最终目标 MP
+                                    <input data-field="project-final-megapixels" type="number" min="0.1" max="16" step="0.1" inputmode="decimal">
                                 </label>
-                                <label>二采目标 MP
-                                    <input data-field="project-second-pass-megapixels" type="number" min="0.1" max="16" step="0.1" inputmode="decimal">
+                                <label>一采潜空间比例
+                                    <input data-field="project-lowres-scale" type="number" min="0.25" max="0.95" step="0.01" inputmode="decimal">
                                 </label>
-                                <small>属于项目级生成规格；修改不会重新打点，后续视频生成节点统一读取。</small>
+                                <small>最终 MP 决定画布；SelfLift 按比例反推一采 latent。修改不会重新打点。</small>
                             </fieldset>
                             <fieldset class="xiaoyue-mv-generation-spec xiaoyue-mv-skill-templates">
                                 <legend>各阶段 Skill 模板</legend>
@@ -2706,7 +2736,7 @@ class PlannerEditor {
                             </section>
                             <section>
                                 <h4>会保留</h4>
-                                <p>项目身份、母带／干声、项目总提示词、字幕母版绝对时间轴、公用资产库、影片画幅与双采 MP。</p>
+                                <p>项目身份、母带／干声、项目总提示词、字幕母版绝对时间轴、公用资产库、影片画幅、最终 MP 与一采潜空间比例。</p>
                             </section>
                         </div>
                         <output data-field="replan-summary" role="status"></output>
@@ -3192,10 +3222,10 @@ class PlannerEditor {
         this.field("project-aspect-ratio").addEventListener("change", () => {
             this.updateProjectGenerationSpec();
         });
-        this.field("project-first-pass-megapixels").addEventListener("change", () => {
+        this.field("project-final-megapixels").addEventListener("change", () => {
             this.updateProjectGenerationSpec();
         });
-        this.field("project-second-pass-megapixels").addEventListener("change", () => {
+        this.field("project-lowres-scale").addEventListener("change", () => {
             this.updateProjectGenerationSpec();
         });
         this.field("project-outline-skill").addEventListener("change", (event) => {
@@ -3777,10 +3807,10 @@ class PlannerEditor {
         this.field("creative-plan-overview").value = this.plan.creative_plan.overview;
         this.field("project-negative-prompt").value = project.negative_prompt;
         this.field("project-aspect-ratio").value = generationSpec.aspect_ratio;
-        this.field("project-first-pass-megapixels").value = String(
-            generationSpec.first_pass_megapixels);
-        this.field("project-second-pass-megapixels").value = String(
-            generationSpec.second_pass_megapixels);
+        this.field("project-final-megapixels").value = String(
+            generationSpec.final_megapixels);
+        this.field("project-lowres-scale").value = String(
+            generationSpec.lowres_scale);
         this.renderProjectSkillTemplates();
         this.renderProjectSummary();
         this.renderProjectAssets();
@@ -3853,16 +3883,16 @@ class PlannerEditor {
     updateProjectGenerationSpec() {
         const generationSpec = normalizeGenerationSpec({
             aspect_ratio: this.field("project-aspect-ratio").value,
-            first_pass_megapixels: this.field("project-first-pass-megapixels").value,
-            second_pass_megapixels: this.field("project-second-pass-megapixels").value,
+            final_megapixels: this.field("project-final-megapixels").value,
+            lowres_scale: this.field("project-lowres-scale").value,
         });
         this.plan.generation_spec = generationSpec;
         this.field("project-aspect-ratio").value = generationSpec.aspect_ratio;
-        this.field("project-first-pass-megapixels").value = String(
-            generationSpec.first_pass_megapixels);
-        this.field("project-second-pass-megapixels").value = String(
-            generationSpec.second_pass_megapixels);
-        this.setDirty("影片画幅与双采 MP 已更新；时间轴和所有切点保持不变。", false);
+        this.field("project-final-megapixels").value = String(
+            generationSpec.final_megapixels);
+        this.field("project-lowres-scale").value = String(
+            generationSpec.lowres_scale);
+        this.setDirty("影片画幅、最终 MP 与一采潜空间比例已更新；时间轴和所有切点保持不变。", false);
         this.renderPromptContext();
     }
 
@@ -4548,7 +4578,7 @@ class PlannerEditor {
             : "镜头纲领未建立";
         const generationSpec = normalizeGenerationSpec(this.plan.generation_spec);
         summary.textContent =
-            `${projectName} · ${generationSpec.aspect_ratio.split(" ")[0]} · ${generationSpec.first_pass_megapixels}→${generationSpec.second_pass_megapixels} MP · ${outlineState} · 项目总提示词${this.plan.project.overall_prompt ? "已填" : "未填"} · 当前镜头调用 ${bound.length} 个资产${references}`;
+            `${projectName} · ${generationSpec.aspect_ratio.split(" ")[0]} · 最终 ${generationSpec.final_megapixels} MP / 一采 ${generationSpec.lowres_scale}× · ${outlineState} · 项目总提示词${this.plan.project.overall_prompt ? "已填" : "未填"} · 当前镜头调用 ${bound.length} 个资产${references}`;
     }
 
     renderCreativeAssetNeeds() {
@@ -5472,7 +5502,7 @@ class PlannerEditor {
         const status = this.field("subtitle-status");
         const provider = connectedSubtitleProvider(this.node);
         if (!provider) {
-            status.value = "未连接本地 Whisper Provider；也可以直接粘贴时间戳字幕。";
+            status.value = "未连接 ASR Provider；请连接局域网或本地 Whisper Provider，也可以直接粘贴时间戳字幕。";
             return;
         }
         this.subtitleProvider = provider;
@@ -5483,6 +5513,7 @@ class PlannerEditor {
                 : "当前项目没有可识别的母带；请在“项目／声音／资产”中导入母带并运行主节点。";
             return;
         }
+        const useLan = provider.kind === "lan";
         const audioLabel = source === "vocals" ? "对齐干声" : "母带";
         if (this.masterCues().length) {
             const correctedCount = this.masterCues().filter((cue) => Number(cue.revision || 0) > 0).length;
@@ -5499,7 +5530,7 @@ class PlannerEditor {
         }
         button.disabled = true;
         button.setAttribute("aria-busy", "true");
-        button.textContent = "本地 Whisper 识别中…";
+        button.textContent = `${provider.label}识别中…`;
         status.value = `正在用${provider.label}识别${audioLabel}；已有字幕只会在成功返回后替换。`;
         try {
             const mediaSource = preview.server_path
@@ -5508,26 +5539,86 @@ class PlannerEditor {
                     source_type: "url",
                     url: new URL(audioUrl(preview), window.location.href).href,
                 };
-            const requestBody = {
+            const requestBody = useLan ? {
+                preview: {
+                    filename: preview.filename,
+                    subfolder: preview.subfolder || "",
+                    type: preview.type || "temp",
+                },
+                ...lanAsrSettings(provider),
+            } : {
                 fps: Number(this.plan.h3?.fps || 24),
                 ...localWhisperSettings(provider),
                 media_type: "audio",
                 ...mediaSource,
             };
-            const response = await api.fetchApi(
-                "/easy-media/subtitles/recognize",
-                {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify(requestBody),
-                },
-            );
-            const result = await response.json().catch(() => ({}));
-            if (!response.ok) throw new Error(result.error || `字幕识别失败（HTTP ${response.status}）`);
+            let result;
+            if (useLan) {
+                const startResponse = await api.fetchApi(
+                    "/xiaoyue-mv/subtitles/recognize-lan/start",
+                    {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify(requestBody),
+                    },
+                );
+                const started = await startResponse.json().catch(() => ({}));
+                if (!startResponse.ok) {
+                    throw new Error(started.error || `无法启动字幕识别（HTTP ${startResponse.status}）`);
+                }
+                if (!started.job_id) throw new Error("字幕识别任务没有返回任务编号。");
+                const pollDelay = Math.max(600, Number(started.poll_after_ms) || 1200);
+                const maximumWait = Math.max(
+                    20 * 60 * 1000,
+                    Number(requestBody.timeout_seconds || 600) * 2000 + 60_000,
+                );
+                const pollStartedAt = Date.now();
+                while (true) {
+                    await waitMilliseconds(pollDelay);
+                    const jobResponse = await api.fetchApi(
+                        `/xiaoyue-mv/subtitles/recognize-lan/status/${encodeURIComponent(started.job_id)}`,
+                    );
+                    const job = await jobResponse.json().catch(() => ({}));
+                    if (!jobResponse.ok) {
+                        throw new Error(job.error || `读取字幕任务失败（HTTP ${jobResponse.status}）`);
+                    }
+                    if (job.state === "completed") {
+                        result = job.result || {};
+                        break;
+                    }
+                    if (job.state === "failed") {
+                        throw new Error(job.error || "字幕识别任务失败。");
+                    }
+                    const elapsed = Number(job.elapsed_seconds)
+                        || (Date.now() - pollStartedAt) / 1000;
+                    status.value = `${provider.label}正在识别${audioLabel}，已等待 ${Math.ceil(elapsed)} 秒；完成前不会覆盖旧字幕。`;
+                    if (Date.now() - pollStartedAt > maximumWait) {
+                        throw new Error("字幕识别任务等待超时；后台任务可能仍在运行。");
+                    }
+                }
+            } else {
+                const response = await api.fetchApi(
+                    "/easy-media/subtitles/recognize",
+                    {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify(requestBody),
+                    },
+                );
+                result = await response.json().catch(() => ({}));
+                if (!response.ok) {
+                    throw new Error(result.error || `字幕识别失败（HTTP ${response.status}）`);
+                }
+            }
             const segments = Array.isArray(result.segments) ? result.segments : [];
             if (!segments.length) throw new Error(`模型没有返回带时间戳的字幕。请确认${audioLabel}中有人声。`);
-            this.replaceMasterCues(segments, "asr_whisper_large_v3");
-            status.value = `${provider.label}已从${audioLabel}识别 ${segments.length} 条（模型分段时间戳）；镜头校正轨保持不变。`;
+            this.replaceMasterCues(
+                segments, useLan ? "asr_xiaoyue_lan" : "asr_whisper_large_v3");
+            const timingNote = useLan ? "窗口级时间戳" : "模型分段时间戳";
+            const retryNote = result.retried_after_timeout
+                ? `；首次超时后已自动改用 ${result.segment_seconds} 秒窗口重试`
+                : "";
+            status.value = `${provider.label}已从${audioLabel}识别 ${segments.length} 条（${timingNote}${retryNote}）；镜头校正轨保持不变。`;
         } catch (error) {
             const message = error?.message || String(error);
             status.value = `${provider.label} · ${audioLabel}识别失败：${message}；原字幕母版未改变。`;

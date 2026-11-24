@@ -727,10 +727,20 @@ def _generation_spec_metadata(existing: dict[str, Any] | None) -> dict[str, Any]
     source = existing.get("generation_spec", {}) if isinstance(existing, dict) else {}
     if not isinstance(source, dict):
         source = {}
+    final_megapixels = float(
+        source.get("final_megapixels")
+        or source.get("second_pass_megapixels")
+        or 0.9
+    )
+    lowres_scale = source.get("lowres_scale")
+    if lowres_scale is None:
+        first = float(source.get("first_pass_megapixels") or 0.4)
+        second = float(source.get("second_pass_megapixels") or final_megapixels)
+        lowres_scale = math.sqrt(first / second) if second > 0 else 0.65
     return {
         "aspect_ratio": str(source.get("aspect_ratio") or "16:9 (Widescreen)"),
-        "first_pass_megapixels": float(source.get("first_pass_megapixels") or 0.4),
-        "second_pass_megapixels": float(source.get("second_pass_megapixels") or 0.9),
+        "final_megapixels": final_megapixels,
+        "lowres_scale": float(lowres_scale),
         "pixel_alignment": int(source.get("pixel_alignment") or 32),
     }
 

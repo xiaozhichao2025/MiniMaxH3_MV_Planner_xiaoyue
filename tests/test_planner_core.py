@@ -976,8 +976,8 @@ class PlanTests(unittest.TestCase):
         }
         base["generation_spec"] = {
             "aspect_ratio": "21:9 (Ultrawide)",
-            "first_pass_megapixels": 0.6,
-            "second_pass_megapixels": 1.4,
+            "final_megapixels": 1.4,
+            "lowres_scale": 0.65,
             "pixel_alignment": 32,
         }
         base["assets"] = [{

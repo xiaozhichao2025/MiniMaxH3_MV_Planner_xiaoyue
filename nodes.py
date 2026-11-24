@@ -382,7 +382,7 @@ def _load_project_owned_audio(project: dict[str, Any]) -> tuple[
 SHOT_OUTPUT_TYPES = ("STRING", "AUDIO", "COMBO", "FLOAT", "FLOAT", "FLOAT",
                      "INT", "INT", "STRING", "STRING", "INT", "INT",
                      "STRING", "INT", "INT", "STRING", "STRING", "STRING",
-                     "STRING")
+                     "STRING", "FLOAT", "FLOAT")
 SHOT_OUTPUT_NAMES = ("h3_prompt", "shot_audio", "aspect_ratio",
                      "first_pass_megapixels", "second_pass_megapixels",
                      "raw_seconds", "raw_frames", "seed", "output_prefix",
@@ -390,13 +390,14 @@ SHOT_OUTPUT_NAMES = ("h3_prompt", "shot_audio", "aspect_ratio",
                      "deliver_frames", "continuation_video_path",
                      "continuation_frame_count", "continuation_start_frame",
                      "shot_audio_input_name", "input_subfolder",
-                     "output_subfolder", "output_filename_stem")
+                     "output_subfolder", "output_filename_stem",
+                     "final_megapixels", "lowres_scale")
 SHOT_OUTPUT_TOOLTIPS = (
     "当前镜头已保存的 H3 提示词；一采直接接入，二采可在用户工作流里叠加自己的增强词。",
     "按本镜生成窗口切出的原曲音频，含规划的前后补齐；接音频驱动或附件槽位。",
     "项目画幅比例；可接用户自己选用的分辨率节点。",
-    "一采目标百万像素量；单采工作流只需连接所用的像素参数。",
-    "二采目标百万像素量；仅在用户采用二采工作流时连接。",
+    "旧工作流兼容口：由最终 MP 与一采潜空间比例反算；新版工作流不要连接。",
+    "旧工作流兼容口：等于最终目标 MP；新版工作流不要连接。",
     "生成窗口时长，单位秒；精确帧数请优先使用 raw_frames。",
     "本镜精确生成帧数；H3 的 length 应直接接此口，勿再由秒数换算。",
     "本次生成使用的随机种子；应接用户工作流的噪声节点。",
@@ -411,7 +412,25 @@ SHOT_OUTPUT_TOOLTIPS = (
     "切窗音频所在的 input 相对子目录；由工作台镜头页生成时填写。",
     "本次视频相对 ComfyUI output 根目录的目标子目录；可接自定义保存节点的目录口。",
     "本次视频的文件名前缀，不含目录和扩展名；可接自定义保存节点的文件名口。",
+    "唯一权威的最终画布百万像素量；接最终分辨率节点。",
+    "SelfLift 从最终 latent 反推一采网格的比例；直接接 lowres_scale。",
 )
+
+
+def _generation_dimensions(specification: dict[str, Any]) -> tuple[float, float, float, float]:
+    final_megapixels = float(
+        specification.get("final_megapixels")
+        or specification.get("second_pass_megapixels")
+        or 0.9
+    )
+    lowres_scale = specification.get("lowres_scale")
+    if lowres_scale is None:
+        first = float(specification.get("first_pass_megapixels") or 0.4)
+        second = float(specification.get("second_pass_megapixels") or final_megapixels)
+        lowres_scale = math.sqrt(first / second) if second > 0 else 0.65
+    lowres_scale = float(lowres_scale)
+    legacy_first = round(final_megapixels * lowres_scale * lowres_scale, 3)
+    return legacy_first, final_megapixels, final_megapixels, lowres_scale
 
 
 class MiniMaxH3_MV_Planner_xiaoyue:
@@ -835,6 +854,8 @@ class Xiaoyue_MV_ShotInput:
                                "input_name": relative.as_posix(),
                                "absolute_path": str(absolute)})
         specification = mv_plan.get("generation_spec") or {}
+        legacy_first, legacy_second, final_megapixels, lowres_scale = \
+            _generation_dimensions(specification)
         actual_seed = secrets.randbits(63) if int(seed) < 0 else int(seed)
         prefix = (f"xiaoyue_mv_projects/{project_id}/generations/"
                   f"{project['project_code']}_{window['scene_code']}_manual_"
@@ -843,8 +864,7 @@ class Xiaoyue_MV_ShotInput:
                  "sample_rate": int(master_audio["sample_rate"])}
         return (
             prompt, audio, str(specification["aspect_ratio"]),
-            float(specification["first_pass_megapixels"]),
-            float(specification["second_pass_megapixels"]),
+            legacy_first, legacy_second,
             int(window["raw_frames"]) / FPS, int(window["raw_frames"]),
             actual_seed, prefix,
             json.dumps({"visual_references": references,
@@ -852,6 +872,7 @@ class Xiaoyue_MV_ShotInput:
             int(window["deliver_from_raw_frame"]), int(window["deliver_frames"]),
             "", 0, 0, "", "", prefix.rsplit("/", 1)[0],
             prefix.rsplit("/", 1)[-1],
+            final_megapixels, lowres_scale,
         )
 
 
@@ -881,6 +902,9 @@ class Xiaoyue_MV_RuntimeShot:
             "input_subfolder": ("STRING", {"default": ""}),
             "output_subfolder": ("STRING", {"default": ""}),
             "output_filename_stem": ("STRING", {"default": "shot"}),
+            "final_megapixels": ("FLOAT", {"default": 0.9}),
+            "lowres_scale": ("FLOAT", {"default": 0.65, "min": 0.25,
+                                         "max": 0.95, "step": 0.01}),
         }}
 
     RETURN_TYPES = Xiaoyue_MV_ShotInput.RETURN_TYPES

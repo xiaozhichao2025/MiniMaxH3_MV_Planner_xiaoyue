@@ -258,9 +258,17 @@ def with_stale_flags(state: dict[str, Any],
         shot_id = str(version.get("shot_uid") or version.get("shot_id") or "")
         matching = expected.get(shot_id)
         if isinstance(matching, dict):
-            matching = matching.get(
-                "current" if version.get("fingerprint_revision") == 2 else "legacy")
-        if matching is not None and version.get("window_fingerprint") != matching:
+            revision = "current" if version.get("fingerprint_revision") == 2 else "legacy"
+            primary = matching.get(revision)
+            compatible = matching.get(f"{revision}_compatible") or []
+            if not isinstance(compatible, (list, tuple, set)):
+                compatible = [compatible]
+            matching = [primary, *compatible]
+        if isinstance(matching, (list, tuple, set)):
+            fingerprint_matches = version.get("window_fingerprint") in matching
+        else:
+            fingerprint_matches = version.get("window_fingerprint") == matching
+        if matching is not None and not fingerprint_matches:
             return True
         parent = str(version.get("parent_version_id") or "")
         # A disconnected seam is a historical edit boundary.  Its old

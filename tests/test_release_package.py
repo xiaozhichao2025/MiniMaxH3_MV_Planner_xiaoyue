@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import os
 import sys
 import types
 import unittest
@@ -26,12 +27,12 @@ class _Routes:
 class ReleasePackageTests(unittest.TestCase):
     def test_release_version_and_readme_assets(self):
         package_init = (ROOT / "__init__.py").read_text("utf-8")
-        self.assertIn('__version__ = "0.1.4"', package_init)
+        self.assertIn('__version__ = "0.2.9"', package_init)
         changelog = (ROOT / "CHANGELOG.md").read_text("utf-8")
-        self.assertIn("## v0.1.4", changelog)
+        self.assertIn("## v0.2.9", changelog)
         for readme in ("README.md", "README_EN.md"):
             body = (ROOT / readme).read_text("utf-8")
-            self.assertIn("v0.1.4", body)
+            self.assertIn("v0.2.9", body)
             for filename in (
                 "01-project-setup.png",
                 "02-mv-workbench.png",
@@ -47,8 +48,14 @@ class ReleasePackageTests(unittest.TestCase):
         self.assertIn("MIT License", license_text)
         self.assertIn("Permission is hereby granted, free of charge", license_text)
         self.assertFalse((ROOT / "ACKNOWLEDGEMENTS.md").exists())
-        workflow = ROOT / "workflows" / "MiniMaxH3_MV_Planner_xiaoyue_MV工作台v1.0.json"
+        anchor_workflow = ROOT / "workflows" / "MiniMaxH3_MV_Planner_xiaoyue_MV工作台v1.0.json"
+        workflow = ROOT / "workflows" / "MiniMaxH3_MV_Planner_xiaoyue_MV工作台v1.9.json"
+        self.assertTrue(anchor_workflow.is_file())
         self.assertTrue(workflow.is_file())
+        for revision in range(1, 9):
+            obsolete = ROOT / "workflows" / (
+                f"MiniMaxH3_MV_Planner_xiaoyue_MV工作台v1.{revision}.json")
+            self.assertFalse(obsolete.exists())
         for readme in ("README.md", "README_EN.md"):
             with self.subTest(readme=readme):
                 body = (ROOT / readme).read_text("utf-8")
@@ -60,7 +67,7 @@ class ReleasePackageTests(unittest.TestCase):
                 self.assertNotIn("ACKNOWLEDGEMENTS.md", body)
                 for required in (
                     "LICENSE",
-                    "workflows/MiniMaxH3_MV_Planner_xiaoyue_MV工作台v1.0.json",
+                    "workflows/MiniMaxH3_MV_Planner_xiaoyue_MV工作台v1.9.json",
                     "https://github.com/tl2012tl/comfyUI-llama-TE",
                     "https://github.com/T8mars/comfyui-minimax-h3-audio-T8",
                     "https://github.com/swan7-py/ComfyUI_Swan_Bits",
@@ -83,6 +90,7 @@ class ReleasePackageTests(unittest.TestCase):
             "nodes.py", "asr_provider.py", "server_api.py",
             "web/mv_planner.js",
             "workflows/MiniMaxH3_MV_Planner_xiaoyue_MV工作台v1.0.json",
+            "workflows/MiniMaxH3_MV_Planner_xiaoyue_MV工作台v1.9.json",
         ):
             with self.subTest(path=relative_path):
                 source = (ROOT / relative_path).read_text("utf-8")
@@ -115,7 +123,9 @@ class ReleasePackageTests(unittest.TestCase):
             package_name: package,
         }
         previous = {name: sys.modules.get(name) for name in injected}
+        previous_private = os.environ.get("XIAOYUE_DISABLE_PRIVATE_EXTENSIONS")
         try:
+            os.environ["XIAOYUE_DISABLE_PRIVATE_EXTENSIONS"] = "1"
             sys.modules.update(injected)
             spec.loader.exec_module(package)
             mappings = package.NODE_CLASS_MAPPINGS
@@ -147,6 +157,10 @@ class ReleasePackageTests(unittest.TestCase):
                     sys.modules.pop(name, None)
                 else:
                     sys.modules[name] = module
+            if previous_private is None:
+                os.environ.pop("XIAOYUE_DISABLE_PRIVATE_EXTENSIONS", None)
+            else:
+                os.environ["XIAOYUE_DISABLE_PRIVATE_EXTENSIONS"] = previous_private
 
 
 if __name__ == "__main__":

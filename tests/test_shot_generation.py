@@ -253,6 +253,48 @@ class ShotGenerationStoreTests(unittest.TestCase):
         self.assertNotEqual(original, shot_workflow.window_fingerprint(
             renumbered, {}, "audio", parent_uid=""))
 
+    def test_generation_spec_schema_migration_preserves_old_fingerprint(self):
+        window = {"shot_id": "shot_004", "source_start_frame": 490,
+                  "source_end_frame": 614, "raw_frames": 124,
+                  "context_frames": 0, "deliver_from_raw_frame": 32,
+                  "deliver_frames": 92, "delivery_timeline_range": [522, 614],
+                  "core_timeline_range": [522, 614]}
+        current = {"aspect_ratio": "16:9 (Widescreen)",
+                   "final_megapixels": 0.9, "lowres_scale": 0.6667,
+                   "pixel_alignment": 32}
+        variants = shot_workflow.generation_spec_fingerprint_variants(current)
+        self.assertEqual(variants, [current, {
+            "aspect_ratio": "16:9 (Widescreen)",
+            "pixel_alignment": 32,
+            "first_pass_megapixels": 0.4,
+            "second_pass_megapixels": 0.9,
+        }])
+        legacy_fingerprint = shot_workflow.window_fingerprint(
+            window, variants[1], "audio", parent_uid="")
+        state = {"shots": {"uid_04": {
+            "selected_version_id": "old-parent",
+            "versions": [{"id": "old-parent", "shot_uid": "uid_04",
+                          "status": "completed", "fingerprint_revision": 2,
+                          "window_fingerprint": legacy_fingerprint}],
+        }}}
+        expected = {"uid_04": {
+            "current": shot_workflow.window_fingerprint(
+                window, current, "audio", parent_uid=""),
+            "current_compatible": [legacy_fingerprint],
+        }}
+        flagged = versions.with_stale_flags(state, expected)
+        self.assertFalse(flagged["shots"]["uid_04"]["versions"][0]["stale"])
+
+        changed_window = {**window, "source_start_frame": 489}
+        changed = {"uid_04": {
+            "current": shot_workflow.window_fingerprint(
+                changed_window, current, "audio", parent_uid=""),
+            "current_compatible": [shot_workflow.window_fingerprint(
+                changed_window, variants[1], "audio", parent_uid="")],
+        }}
+        self.assertTrue(versions.with_stale_flags(state, changed)
+                        ["shots"]["uid_04"]["versions"][0]["stale"])
+
     def test_legacy_manifest_migrates_to_non_positional_key(self):
         path = versions._manifest_path(self.project_id, self.roots)
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -710,7 +752,75 @@ class WorkflowConversionTests(unittest.TestCase):
 
 
 class ShotWorkflowSpliceTests(unittest.TestCase):
-    def test_visible_template_is_the_live_backbone_source(self):
+    def test_v19_couples_first_pass_grid_without_changing_swan_sampling(self):
+        template = (Path(__file__).resolve().parents[1] / "workflows" /
+                    "MiniMaxH3_MV_Planner_xiaoyue_MV工作台v1.9.json")
+        canvas = json.loads(template.read_text(encoding="utf-8"))
+        self.assertEqual(canvas["extra"]["xiaoyue_mv_visible_generation"], "v2.10")
+        self.assertEqual(canvas["extra"]["xiaoyue_mv_template_revision"], "v1.9")
+
+        normalized = shot_workflow.canvas_backbone(canvas)
+        nodes = {node["id"]: node for node in normalized["nodes"]}
+        links = {int(link[0]): link for link in normalized["links"]}
+        expected = (
+            "max(32, round((a / min(a, b)) * "
+            "round(min(a, b) * c / 32)) * 32)"
+        )
+        for node_id, axis_sources in ((20, ([101, 0], [101, 1])),
+                                      (96, ([101, 1], [101, 0]))):
+            node = nodes[node_id]
+            self.assertEqual(node["widgets_values_named"]["expression"], expected)
+            inputs = {item["name"]: item for item in node["inputs"]}
+            self.assertEqual(links[inputs["values.a"]["link"]][1:3], axis_sources[0])
+            self.assertEqual(links[inputs["values.b"]["link"]][1:3], axis_sources[1])
+            self.assertEqual(links[inputs["values.c"]["link"]][1:3], [130, 20])
+
+        def coupled_axis(axis: int, other: int, scale: float) -> int:
+            short_cells = round(min(axis, other) * scale / 32)
+            return max(32, round(axis / min(axis, other) * short_cells) * 32)
+
+        self.assertEqual(
+            (coupled_axis(1280, 736, 0.6667),
+             coupled_axis(736, 1280, 0.6667)),
+            (832, 480),
+        )
+        types = [node["type"] for node in normalized["nodes"]]
+        self.assertEqual(types.count("MiniMaxH3ReferenceToVideo"), 2)
+        self.assertIn("SWAN_SigmasLowZero", types)
+        self.assertIn("SWAN_TransitionLift", types)
+        self.assertNotIn("SelfLiftSplitLowH3", types)
+        self.assertNotIn("DisableNoise", types)
+        self.assertNotIn("ImageAddNoise", types)
+        self.assertEqual(nodes[163]["widgets_values_named"]["strength"], 0.75)
+        for guide_id in (133, 134):
+            image = next(item for item in nodes[guide_id]["inputs"]
+                         if item["name"] == "image")
+            self.assertEqual(links[image["link"]][1:3], [132, 0])
+
+        node_info = {node["type"]: {"input": {"required": {}}}
+                     for node in normalized["nodes"]}
+        queued = shot_workflow.compose_shot_workflow(
+            normalized, node_info, prompt="v1.9 coupled grid test",
+            window={"raw_frames": 226, "deliver_from_raw_frame": 22,
+                    "deliver_frames": 169, "context_frames": 22},
+            generation_spec={"aspect_ratio": "16:9 (Widescreen)",
+                             "final_megapixels": 0.9,
+                             "lowres_scale": 0.6667},
+            audio_input_name="project/audio/shot.wav", visual_inputs=[],
+            output_prefix="project/video/shot_v1", seed=42,
+            parent_video_path="parent.mp4", parent_deliver_frames=92,
+            parent_deliver_from_raw_frame=32,
+        )
+        self.assertEqual(queued["20"]["inputs"]["values.a"], ["101", 0])
+        self.assertEqual(queued["20"]["inputs"]["values.b"], ["101", 1])
+        self.assertEqual(queued["20"]["inputs"]["values.c"], ["130", 20])
+        self.assertEqual(queued["96"]["inputs"]["values.a"], ["101", 1])
+        self.assertEqual(queued["96"]["inputs"]["values.b"], ["101", 0])
+        self.assertEqual(queued["96"]["inputs"]["values.c"], ["130", 20])
+        self.assertEqual(queued["163"]["inputs"]["strength"], 0.75)
+
+
+    def test_v10_anchor_keeps_original_backbone_contract(self):
         template = (Path(__file__).resolve().parents[1] / "workflows" /
                     "MiniMaxH3_MV_Planner_xiaoyue_MV工作台v1.0.json")
         canvas = json.loads(template.read_text(encoding="utf-8"))
@@ -778,7 +888,7 @@ class ShotWorkflowSpliceTests(unittest.TestCase):
             {node["id"] for node in normalized["nodes"]}))
         self.assertEqual(len(shot_workflow.canvas_workflow_fingerprint(normalized)), 64)
 
-    def test_merged_workbench_reads_live_seed_and_keeps_old_adapter(self):
+    def test_v10_anchor_reads_live_seed_and_keeps_old_adapter(self):
         template = (Path(__file__).resolve().parents[1] / "workflows" /
                     "MiniMaxH3_MV_Planner_xiaoyue_MV工作台v1.0.json")
         canvas = json.loads(template.read_text(encoding="utf-8"))

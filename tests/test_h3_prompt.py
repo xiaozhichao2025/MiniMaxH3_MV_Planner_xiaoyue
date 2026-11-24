@@ -24,8 +24,8 @@ def sample_plan():
         },
         "generation_spec": {
             "aspect_ratio": "16:9 (Widescreen)",
-            "first_pass_megapixels": 0.4,
-            "second_pass_megapixels": 0.9,
+            "final_megapixels": 0.9,
+            "lowres_scale": 0.65,
         },
         "creative_plan": {"overview": "雨夜车站到晨光天台的情绪推进。"},
         "h3": {"fps": 24},

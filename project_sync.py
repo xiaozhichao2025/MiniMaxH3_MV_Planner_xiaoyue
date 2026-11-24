@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 from copy import deepcopy
 from typing import Any
 
@@ -18,6 +19,26 @@ def _skill_templates(value: Any) -> dict[str, str]:
     return {
         stage: str(source.get(stage) or default_id)
         for stage, default_id in DEFAULT_SKILL_TEMPLATES.items()
+    }
+
+
+def _generation_spec(value: Any) -> dict[str, Any]:
+    source = value if isinstance(value, dict) else {}
+    final_megapixels = float(
+        source.get("final_megapixels")
+        or source.get("second_pass_megapixels")
+        or 0.9
+    )
+    lowres_scale = source.get("lowres_scale")
+    if lowres_scale is None:
+        first = float(source.get("first_pass_megapixels") or 0.4)
+        second = float(source.get("second_pass_megapixels") or final_megapixels)
+        lowres_scale = math.sqrt(first / second) if second > 0 else 0.65
+    return {
+        "aspect_ratio": str(source.get("aspect_ratio") or "16:9 (Widescreen)"),
+        "final_megapixels": final_megapixels,
+        "lowres_scale": float(lowres_scale),
+        "pixel_alignment": int(source.get("pixel_alignment") or 32),
     }
 
 
@@ -49,12 +70,7 @@ def _manifest_components(manifest: dict[str, Any]) -> dict[str, Any]:
             "negative_prompt": str(brief.get("negative_prompt") or ""),
         },
         "assets": deepcopy(assets),
-        "generation_spec": {
-            "aspect_ratio": str(generation_spec.get("aspect_ratio") or "16:9 (Widescreen)"),
-            "first_pass_megapixels": float(generation_spec.get("first_pass_megapixels") or 0.4),
-            "second_pass_megapixels": float(generation_spec.get("second_pass_megapixels") or 0.9),
-            "pixel_alignment": int(generation_spec.get("pixel_alignment") or 32),
-        },
+        "generation_spec": _generation_spec(generation_spec),
         "skill_templates": _skill_templates(manifest.get("skill_templates")),
         "lyrics": {
             "source_text": str(lyrics.get("source_text") or ""),
@@ -80,12 +96,7 @@ def _plan_components(plan: dict[str, Any]) -> dict[str, Any]:
             "negative_prompt": str(project.get("negative_prompt") or ""),
         },
         "assets": deepcopy(assets),
-        "generation_spec": {
-            "aspect_ratio": str(generation_spec.get("aspect_ratio") or "16:9 (Widescreen)"),
-            "first_pass_megapixels": float(generation_spec.get("first_pass_megapixels") or 0.4),
-            "second_pass_megapixels": float(generation_spec.get("second_pass_megapixels") or 0.9),
-            "pixel_alignment": int(generation_spec.get("pixel_alignment") or 32),
-        },
+        "generation_spec": _generation_spec(generation_spec),
         "skill_templates": _skill_templates(plan.get("skill_templates")),
         "lyrics": {
             "source_text": str(plan.get("subtitle_source") or ""),
@@ -237,7 +248,7 @@ def reconcile_project_state(
             notices.append("公共资产库已同步；时间轴保留，已失效的镜头资产绑定会被移除。")
             pending.append("shot_asset_binding_review")
         if "generation_spec" in changed:
-            notices.append("影片画幅或双采 MP 已更新；时间轴保留，后续视频生成统一使用新规格。")
+            notices.append("影片画幅、最终 MP 或一采潜空间比例已更新；时间轴保留，后续视频生成统一使用新规格。")
             pending.append("generation_spec_review")
         if "skill_templates" in changed:
             notices.append("阶段 Skill 模板已更新；时间轴保留，下一次生成使用新模板。")
